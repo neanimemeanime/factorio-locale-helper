@@ -16,11 +16,13 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     auditIssuesCount = 0
 }) => {
     return (
-        <div style={{ marginTop: '1rem', marginBottom: '0' }}>
-            <ul className="tabs tabs-for-panel" style={{ margin: '0', display: 'flex', gap: '4px' }}>
-                <li>
+        <div className="tabs-dock-container">
+            <ul className="tabs tabs-for-panel" role="tablist">
+                <li role="presentation">
                     <a
-                        href="#"
+                        href="#analyzer"
+                        role="tab"
+                        aria-selected={activeTab === 'analyzer'}
                         className={activeTab === 'analyzer' ? 'active' : ''}
                         onClick={(e) => {
                             e.preventDefault();
@@ -30,9 +32,11 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                         Анализ мода
                     </a>
                 </li>
-                <li>
+                <li role="presentation">
                     <a
-                        href="#"
+                        href="#missing"
+                        role="tab"
+                        aria-selected={activeTab === 'missing'}
                         className={activeTab === 'missing' ? 'active' : ''}
                         onClick={(e) => {
                             e.preventDefault();
@@ -47,9 +51,11 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                         )}
                     </a>
                 </li>
-                <li>
+                <li role="presentation">
                     <a
-                        href="#"
+                        href="#audit"
+                        role="tab"
+                        aria-selected={activeTab === 'audit'}
                         className={activeTab === 'audit' ? 'active' : ''}
                         onClick={(e) => {
                             e.preventDefault();

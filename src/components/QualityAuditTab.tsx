@@ -137,101 +137,70 @@ export const QualityAuditTab: React.FC<QualityAuditTabProps> = ({
         return true;
     });
 
-    const getIssueBadge = (type: LocaleIssue['type']) => {
+    const renderBadge = (type: LocaleIssue['type']) => {
         switch (type) {
             case 'tag_mismatch':
-                return { label: 'ТЕГИ', bg: '#e39827', color: '#000' };
+                return <span className="badge badge-warning">ТЕГИ</span>;
             case 'foreign_characters':
-                return { label: 'ИЕРОГЛИФЫ', bg: '#eb5c5f', color: '#fff' };
+                return <span className="badge badge-error">ИЕРОГЛИФЫ</span>;
             case 'mixed_language':
-                return { label: 'СМЕСЬ', bg: '#f1c40f', color: '#000' };
+                return <span className="badge badge-yellow">СМЕСЬ</span>;
             case 'untranslated_english':
-                return { label: 'АНГЛИЙСКИЙ', bg: '#7dcaed', color: '#000' };
+                return <span className="badge badge-info">АНГЛИЙСКИЙ</span>;
         }
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Parameters Panel */}
-            <div className="panel" style={{ padding: '1.25rem' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Параметры аудита качества локализации</h3>
+            <div className="panel tab-content-panel" style={{ padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#ffe6c0' }}>Параметры аудита качества локализации</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Папка с переводами (.cfg):
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={targetPath}
                             onChange={(e) => setTargetPath(e.target.value)}
                             placeholder="C:\Users\...\my-texture-pack\locale\ru"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Папка модов Factorio (для сверки с EN):
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={modsDir}
                             onChange={(e) => setModsDir(e.target.value)}
                             placeholder="C:\Users\...\AppData\Roaming\Factorio\mods"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Фильтр по конкретному моду (опционально):
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={modFilter}
                             onChange={(e) => setModFilter(e.target.value)}
                             placeholder="Например, planet-rabbasca"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Лимит замечаний:
                         </label>
                         <select
                             value={limit}
                             onChange={(e) => setLimit(Number(e.target.value))}
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
+                            className="factorio-select"
+                            style={{ width: '100%' }}
                         >
                             <option value={100}>100 замечаний</option>
                             <option value={250}>250 замечаний</option>
@@ -242,12 +211,14 @@ export const QualityAuditTab: React.FC<QualityAuditTabProps> = ({
                 </div>
 
                 <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <button className="button" onClick={handleResetPaths}>
-                        Сбросить пути
-                    </button>
-                    <button className="button-orange" onClick={handleRunAudit} disabled={isLoading || !isConnected}>
-                        {isLoading ? 'Проверка...' : 'Запустить аудит качества'}
-                    </button>
+                    <div className="button-group">
+                        <button className="button" onClick={handleResetPaths}>
+                            Сбросить пути
+                        </button>
+                        <button className="button-orange" onClick={handleRunAudit} disabled={isLoading || !isConnected}>
+                            {isLoading ? 'Проверка...' : 'Запустить аудит качества'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -278,39 +249,41 @@ export const QualityAuditTab: React.FC<QualityAuditTabProps> = ({
 
             {/* KPI Summary Cards */}
             {result && (
-                <div className="panel" style={{ padding: '1rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', textAlign: 'center' }}>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Проверено файлов</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#ffe6c0' }}>{result.summary.totalFilesScanned}</div>
+                <div className="panel" style={{ padding: '0.85rem' }}>
+                    <div className="kpi-grid">
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Проверено файлов</div>
+                            <div className="kpi-value" style={{ color: '#ffe6c0' }}>
+                                {result.summary.totalFilesScanned}
+                            </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Всего замечаний</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.totalIssuesFound > 0 ? '#eb5c5f' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Всего замечаний</div>
+                            <div className="kpi-value" style={{ color: result.summary.totalIssuesFound > 0 ? '#eb5c5f' : '#2ecc71' }}>
                                 {result.summary.totalIssuesFound}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Несовпадения тегов</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.tagMismatchCount > 0 ? '#e39827' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Несовпадения тегов</div>
+                            <div className="kpi-value" style={{ color: result.summary.tagMismatchCount > 0 ? '#ffa200' : '#2ecc71' }}>
                                 {result.summary.tagMismatchCount}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Символы других языков</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.foreignCharactersCount > 0 ? '#eb5c5f' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Символы языков</div>
+                            <div className="kpi-value" style={{ color: result.summary.foreignCharactersCount > 0 ? '#eb5c5f' : '#2ecc71' }}>
                                 {result.summary.foreignCharactersCount}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Смесь языков</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.mixedCount > 0 ? '#f1c40f' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Смесь языков</div>
+                            <div className="kpi-value" style={{ color: result.summary.mixedCount > 0 ? '#f1c40f' : '#2ecc71' }}>
                                 {result.summary.mixedCount}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Без перевода (EN)</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.untranslatedCount > 0 ? '#7dcaed' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Без перевода (EN)</div>
+                            <div className="kpi-value" style={{ color: result.summary.untranslatedCount > 0 ? '#7dcaed' : '#2ecc71' }}>
                                 {result.summary.untranslatedCount}
                             </div>
                         </div>
@@ -322,154 +295,167 @@ export const QualityAuditTab: React.FC<QualityAuditTabProps> = ({
             {result && result.summary.totalIssuesFound > 0 && (
                 <div className="panel" style={{ padding: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <div className="button-group">
                             <button
-                                className={activeFilter === 'all' ? 'button-orange' : 'button'}
+                                className={activeFilter === 'all' ? 'button-orange button-sm' : 'button button-sm'}
                                 onClick={() => setActiveFilter('all')}
-                                style={{ padding: '6px 12px', minWidth: 'auto' }}
                             >
                                 Все ({result.summary.returnedCount})
                             </button>
                             <button
-                                className={activeFilter === 'tag_mismatch' ? 'button-orange' : 'button'}
+                                className={activeFilter === 'tag_mismatch' ? 'button-orange button-sm' : 'button button-sm'}
                                 onClick={() => setActiveFilter('tag_mismatch')}
-                                style={{ padding: '6px 12px', minWidth: 'auto' }}
                             >
                                 Теги и плейсхолдеры ({result.summary.tagMismatchCount})
                             </button>
                             <button
-                                className={activeFilter === 'foreign_characters' ? 'button-orange' : 'button'}
+                                className={activeFilter === 'foreign_characters' ? 'button-orange button-sm' : 'button button-sm'}
                                 onClick={() => setActiveFilter('foreign_characters')}
-                                style={{ padding: '6px 12px', minWidth: 'auto' }}
                             >
                                 Иероглифы ({result.summary.foreignCharactersCount})
                             </button>
                             <button
-                                className={activeFilter === 'mixed_language' ? 'button-orange' : 'button'}
+                                className={activeFilter === 'mixed_language' ? 'button-orange button-sm' : 'button button-sm'}
                                 onClick={() => setActiveFilter('mixed_language')}
-                                style={{ padding: '6px 12px', minWidth: 'auto' }}
                             >
                                 Смесь языков ({result.summary.mixedCount})
                             </button>
                             <button
-                                className={activeFilter === 'untranslated_english' ? 'button-orange' : 'button'}
+                                className={activeFilter === 'untranslated_english' ? 'button-orange button-sm' : 'button button-sm'}
                                 onClick={() => setActiveFilter('untranslated_english')}
-                                style={{ padding: '6px 12px', minWidth: 'auto' }}
                             >
                                 Без перевода ({result.summary.untranslatedCount})
                             </button>
                         </div>
 
-                        <div style={{ minWidth: '240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '260px', flexGrow: 1, maxWidth: '420px' }}>
                             <input
                                 type="text"
                                 placeholder="Поиск по строкам, ключам или моду..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    padding: '6px 10px',
-                                    backgroundColor: '#140f0a',
-                                    border: '1px solid #555',
-                                    borderRadius: '4px',
-                                    color: '#fff',
-                                    fontFamily: 'monospace'
-                                }}
+                                className="factorio-input"
                             />
+                            {searchQuery.trim() && (
+                                <span className="badge badge-warning" style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                                    Найдено: {filteredIssues.length}
+                                </span>
+                            )}
                         </div>
                     </div>
 
                     {result.summary.hasMore && (
-                        <div style={{ color: '#ffa200', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                        <div style={{ color: '#ffa200', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: 600 }}>
                             Показаны первые {result.summary.returnedCount} из {result.summary.totalIssuesFound} замечаний. Измените фильтр или увеличьте лимит для просмотра остальных.
                         </div>
                     )}
 
                     {/* Issues Table */}
-                    <div className="table-container panel-inset" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                    <div className="table-container panel-inset" style={{ maxHeight: '600px', overflowY: 'auto', padding: '4px' }}>
                         {filteredIssues.length === 0 ? (
-                            <div style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>
+                            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#888888' }}>
                                 В выбранной категории замечаний не найдено.
                             </div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                            <table className="panel-hole">
                                 <thead>
                                     <tr>
-                                        <th style={{ borderBottom: '1px solid #555', padding: '8px', width: '90px' }}>Категория</th>
-                                        <th style={{ borderBottom: '1px solid #555', padding: '8px', width: '170px' }}>Мод / Секция</th>
-                                        <th style={{ borderBottom: '1px solid #555', padding: '8px' }}>Ключ и Содержимое</th>
-                                        <th style={{ borderBottom: '1px solid #555', padding: '8px', width: '140px' }}>Действия</th>
+                                        <th style={{ width: '110px', textAlign: 'center' }}>Категория</th>
+                                        <th style={{ width: '180px' }}>Мод / Секция</th>
+                                        <th>Ключ и Содержимое</th>
+                                        <th style={{ width: '110px', textAlign: 'center' }}>Действия</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredIssues.map((issue, idx) => {
-                                        const badge = getIssueBadge(issue.type);
-                                        return (
-                                            <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#313031' : '#2a292a' }}>
-                                                <td style={{ borderBottom: '1px solid #444', padding: '8px', verticalAlign: 'top' }}>
-                                                    <span
-                                                        className="badge"
-                                                        style={{
-                                                            backgroundColor: badge.bg,
-                                                            color: badge.color,
-                                                            fontWeight: 'bold',
-                                                            padding: '2px 6px',
-                                                            display: 'inline-block'
-                                                        }}
-                                                    >
-                                                        {badge.label}
-                                                    </span>
-                                                </td>
-                                                <td style={{ borderBottom: '1px solid #444', padding: '8px', verticalAlign: 'top' }}>
-                                                    <div style={{ fontWeight: 'bold', color: '#ffe6c0' }}>{issue.modName}</div>
-                                                    <div style={{ color: '#888', fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                                                        [{issue.section}]
-                                                    </div>
-                                                    <div style={{ color: '#666', fontSize: '0.75rem' }}>{issue.file}</div>
-                                                </td>
-                                                <td style={{ borderBottom: '1px solid #444', padding: '8px', verticalAlign: 'top' }}>
-                                                    <div style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#ffa200', marginBottom: '4px' }}>
-                                                        {issue.key}
-                                                    </div>
+                                    {filteredIssues.map((issue, idx) => (
+                                        <tr key={idx}>
+                                            <td className="panel-hole-inner" style={{ textAlign: 'center', verticalAlign: 'top' }}>
+                                                {renderBadge(issue.type)}
+                                            </td>
+                                            <td className="panel-hole-inner" style={{ verticalAlign: 'top' }}>
+                                                <div style={{ fontWeight: 'bold', color: '#ffe6c0', fontSize: '0.95rem' }}>{issue.modName}</div>
+                                                <div style={{ color: '#ffa200', fontSize: '0.85rem', fontFamily: 'Consolas, monospace', marginTop: '2px' }}>
+                                                    [{issue.section}]
+                                                </div>
+                                                <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px', wordBreak: 'break-all' }}>{issue.file}</div>
+                                            </td>
+                                            <td className="panel-hole-inner" style={{ verticalAlign: 'top' }}>
+                                                <div style={{ fontFamily: 'Consolas, monospace', fontWeight: 'bold', color: '#ffa200', marginBottom: '4px', fontSize: '0.95rem' }}>
+                                                    {issue.key}
+                                                </div>
 
-                                                    {/* Issue description */}
-                                                    <div style={{ color: '#eb5c5f', fontSize: '0.85rem', marginBottom: '6px' }}>
-                                                        {issue.description}
-                                                    </div>
+                                                <div style={{ color: '#eb5c5f', fontSize: '0.85rem', marginBottom: '6px', fontWeight: 600 }}>
+                                                    {issue.description}
+                                                </div>
 
-                                                    {/* Comparison boxes */}
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        {issue.originalText && (
-                                                            <div style={{ fontSize: '0.85rem', color: '#aaa', backgroundColor: '#1a191a', padding: '4px 8px', borderRadius: '2px' }}>
-                                                                <strong style={{ color: '#7dcaed' }}>Оригинал (EN):</strong> {issue.originalText}
-                                                            </div>
-                                                        )}
-                                                        <div style={{ fontSize: '0.85rem', color: '#fff', backgroundColor: '#242324', padding: '4px 8px', borderRadius: '2px' }}>
-                                                            <strong style={{ color: '#2ecc71' }}>Перевод (RU):</strong> {issue.text}
+                                                {issue.missingTags && issue.missingTags.length > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: '#a6a6a6' }}>Пропущенные теги:</span>
+                                                        {issue.missingTags.map((tag, tIdx) => (
+                                                            <span key={tIdx} className="badge badge-error" style={{ fontFamily: 'Consolas, monospace' }}>
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {issue.suspiciousWords && issue.suspiciousWords.length > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: '#a6a6a6' }}>Слова:</span>
+                                                        {issue.suspiciousWords.map((word, wIdx) => (
+                                                            <span key={wIdx} className="badge badge-yellow" style={{ fontFamily: 'Consolas, monospace' }}>
+                                                                {word}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {issue.foreignCharacters && issue.foreignCharacters.length > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: '#a6a6a6' }}>Символы:</span>
+                                                        {issue.foreignCharacters.map((char, cIdx) => (
+                                                            <span key={cIdx} className="badge badge-error" style={{ fontFamily: 'Consolas, monospace' }}>
+                                                                {char}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {issue.originalText && (
+                                                        <div className="diff-box diff-box-original">
+                                                            <strong style={{ color: '#7dcaed', marginRight: '6px' }}>Оригинал (EN):</strong>
+                                                            <span>{issue.originalText}</span>
                                                         </div>
+                                                    )}
+                                                    <div className="diff-box diff-box-translated">
+                                                        <strong style={{ color: '#5eb663', marginRight: '6px' }}>Перевод (RU):</strong>
+                                                        <span>{issue.text}</span>
                                                     </div>
-                                                </td>
-                                                <td style={{ borderBottom: '1px solid #444', padding: '8px', verticalAlign: 'top' }}>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        <button
-                                                            className="button"
-                                                            onClick={() => copyText(issue.key, `Ключ ${issue.key} скопирован`)}
-                                                            style={{ padding: '3px 8px', height: '26px', minWidth: 'auto', fontSize: '0.75rem' }}
-                                                        >
-                                                            Ключ
-                                                        </button>
-                                                        <button
-                                                            className="button"
-                                                            onClick={() => copyText(`${issue.key}=${issue.text}`, 'Строка скопирована')}
-                                                            style={{ padding: '3px 8px', height: '26px', minWidth: 'auto', fontSize: '0.75rem' }}
-                                                        >
-                                                            Строку
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                                </div>
+                                            </td>
+                                            <td className="panel-hole-inner" style={{ textAlign: 'center', verticalAlign: 'top' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                                    <button
+                                                        className="button button-sm"
+                                                        style={{ width: '80px' }}
+                                                        onClick={() => copyText(issue.key, `Ключ ${issue.key} скопирован`)}
+                                                        title="Скопировать имя ключа"
+                                                    >
+                                                        Ключ
+                                                    </button>
+                                                    <button
+                                                        className="button button-sm"
+                                                        style={{ width: '80px' }}
+                                                        onClick={() => copyText(`${issue.key}=${issue.text}`, 'Строка скопирована')}
+                                                        title="Скопировать строку (ключ=значение)"
+                                                    >
+                                                        Строку
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         )}
@@ -480,8 +466,8 @@ export const QualityAuditTab: React.FC<QualityAuditTabProps> = ({
             {/* Zero issues empty state */}
             {result && result.summary.totalIssuesFound === 0 && (
                 <div className="panel" style={{ textAlign: 'center', padding: '3rem' }}>
-                    <h3 style={{ color: '#2ecc71', marginBottom: '0.5rem' }}>Замечаний к качеству перевода не обнаружено</h3>
-                    <p style={{ color: '#aaa' }}>
+                    <h3 style={{ color: '#2ecc71', margin: '0 0 0.5rem 0' }}>Замечаний к качеству перевода не обнаружено</h3>
+                    <p style={{ color: '#aaaaaa', margin: 0 }}>
                         Проверено {result.summary.totalFilesScanned} файлов. Все теги, плейсхолдеры и языковые нормы соблюдены.
                     </p>
                 </div>

@@ -138,7 +138,6 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
             const data = await response.json();
             if (data.success) {
                 setActionStatus(`Ключи для мода ${modName} успешно записаны в ${targetMod}/locale/${selectedLang}/${modName}.cfg`);
-                // Rescan to update state
                 handleScan();
             } else {
                 setError(`Не удалось применить ключи: ${data.error}`);
@@ -162,9 +161,9 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
         return text.trim();
     };
 
-    const copyText = (content: string) => {
+    const copyText = (content: string, message: string = 'Скопировано в буфер обмена') => {
         navigator.clipboard.writeText(content);
-        setActionStatus('Скопировано в буфер обмена');
+        setActionStatus(message);
         setTimeout(() => setActionStatus(null), 3000);
     };
 
@@ -191,83 +190,61 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Parameters Panel */}
-            <div className="panel" style={{ padding: '1.25rem' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Параметры поиска недостающих ключей</h3>
+            <div className="panel tab-content-panel" style={{ padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#ffe6c0' }}>Параметры поиска недостающих ключей</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Папка модов Factorio:
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={modsDir}
                             onChange={(e) => setModsDir(e.target.value)}
                             placeholder="C:\Users\...\AppData\Roaming\Factorio\mods"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Целевой мод локализации:
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={targetMod}
                             onChange={(e) => setTargetMod(e.target.value)}
                             placeholder="my-texture-pack"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
                             Фильтр по конкретному моду (опционально):
                         </label>
                         <input
                             type="text"
+                            className="factorio-input"
                             value={modFilter}
                             onChange={(e) => setModFilter(e.target.value)}
                             placeholder="Все активные моды"
-                            style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
                         />
                     </div>
                 </div>
 
-                <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                    <label className="checkbox-label" style={{ margin: '0' }}>
+                <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                    <label className="checkbox-label" style={{ margin: 0 }}>
                         <input
                             type="checkbox"
                             checked={writeToTarget}
                             onChange={(e) => setWriteToTarget(e.target.checked)}
                         />
                         <span className="checkbox"></span>
-                        <div>Автоматически вносить недостающие ключи в файлы целевого мода</div>
+                        <div style={{ color: '#e0e0e0', fontSize: '0.95rem' }}>
+                            Автоматически вносить недостающие ключи в файлы целевого мода
+                        </div>
                     </label>
 
-                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <div className="button-group">
                         <button className="button" onClick={handleResetPaths}>
                             Сбросить пути
                         </button>
@@ -305,27 +282,31 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
 
             {/* Results KPI Summary */}
             {result && (
-                <div className="panel" style={{ padding: '1rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', textAlign: 'center' }}>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Активных модов</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#ffe6c0' }}>{result.summary.totalActiveMods}</div>
+                <div className="panel" style={{ padding: '0.85rem' }}>
+                    <div className="kpi-grid">
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Активных модов</div>
+                            <div className="kpi-value" style={{ color: '#ffe6c0' }}>
+                                {result.summary.totalActiveMods}
+                            </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Модов с нехваткой</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.modsWithMissingKeys > 0 ? '#ffa200' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Модов с нехваткой</div>
+                            <div className="kpi-value" style={{ color: result.summary.modsWithMissingKeys > 0 ? '#ffa200' : '#2ecc71' }}>
                                 {result.summary.modsWithMissingKeys}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Всего недостающих строк</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: result.summary.totalMissingKeys > 0 ? '#e74c3c' : '#2ecc71' }}>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Всего недостающих строк</div>
+                            <div className="kpi-value" style={{ color: result.summary.totalMissingKeys > 0 ? '#eb5c5f' : '#2ecc71' }}>
                                 {result.summary.totalMissingKeys}
                             </div>
                         </div>
-                        <div className="panel-hole-inner" style={{ padding: '0.75rem' }}>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Обновлено файлов</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#7dcaed' }}>{result.summary.updatedFilesCount}</div>
+                        <div className="panel-hole-inner kpi-card">
+                            <div className="kpi-title">Обновлено файлов</div>
+                            <div className="kpi-value" style={{ color: '#7dcaed' }}>
+                                {result.summary.updatedFilesCount}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -333,58 +314,58 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
 
             {/* Master-Detail Explorer */}
             {result && scannedMods.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1rem', minHeight: '550px' }}>
+                <div className="master-detail-container">
                     {/* Left: Mod list */}
                     <div className="panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column' }}>
-                        <h4 style={{ marginBottom: '0.5rem' }}>Список модов ({scannedMods.length})</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                            <h4 style={{ margin: 0, color: '#ffe6c0' }}>Список модов</h4>
+                            <span className="badge badge-warning">{scannedMods.length}</span>
+                        </div>
                         <input
                             type="text"
                             placeholder="Фильтр по названию..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '6px 10px',
-                                marginBottom: '0.75rem',
-                                backgroundColor: '#140f0a',
-                                border: '1px solid #555',
-                                borderRadius: '4px',
-                                color: '#fff',
-                                fontFamily: 'monospace'
-                            }}
+                            className="factorio-input"
+                            style={{ marginBottom: '0.75rem' }}
                         />
 
-                        <div className="panel-inset" style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '550px', padding: '4px' }}>
+                        <div className="panel-inset" style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '520px', padding: '4px' }}>
                             {filteredMods.length === 0 ? (
-                                <div style={{ color: '#888', padding: '1rem', textAlign: 'center' }}>Моды не найдены</div>
+                                <div style={{ color: '#888888', padding: '1.5rem', textAlign: 'center' }}>
+                                    Моды не найдены
+                                </div>
                             ) : (
                                 filteredMods.map(([name, modData]) => {
                                     const isSelected = selectedModName === name;
                                     return (
                                         <div
                                             key={name}
+                                            tabIndex={0}
+                                            role="button"
+                                            aria-pressed={isSelected}
                                             onClick={() => setSelectedModName(name)}
-                                            style={{
-                                                padding: '8px 10px',
-                                                marginBottom: '4px',
-                                                cursor: 'pointer',
-                                                backgroundColor: isSelected ? '#414040' : '#2a282a',
-                                                borderLeft: isSelected ? '3px solid #ffa200' : '3px solid transparent',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                transition: 'background-color 0.15s'
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    setSelectedModName(name);
+                                                }
                                             }}
+                                            className={`mod-list-item ${isSelected ? 'selected' : ''}`}
                                         >
                                             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                                                <div style={{ fontWeight: isSelected ? 'bold' : 'normal', color: isSelected ? '#ffe6c0' : '#fff' }}>
+                                                <div style={{ fontWeight: isSelected ? 700 : 600, color: isSelected ? '#ffe6c0' : '#ffffff', fontSize: '0.95rem' }}>
                                                     {name}
                                                 </div>
-                                                <div style={{ fontSize: '0.8rem', color: '#888' }}>
-                                                    {modData.ruFileExists ? 'Есть в паке' : 'Новый файл'}
+                                                <div style={{ marginTop: '2px' }}>
+                                                    {modData.ruFileExists ? (
+                                                        <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>В паке</span>
+                                                    ) : (
+                                                        <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>Новый файл</span>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <span className="badge" style={{ backgroundColor: '#e39827', color: '#000', fontWeight: 'bold' }}>
+                                            <span className="badge badge-warning" style={{ fontWeight: 'bold' }}>
                                                 +{modData.missingCount}
                                             </span>
                                         </div>
@@ -398,48 +379,49 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                     <div className="panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column' }}>
                         {activeModData && selectedModName ? (
                             <>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid #444', paddingBottom: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid #444444', paddingBottom: '0.75rem' }}>
                                     <div>
-                                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>{selectedModName}</h3>
-                                        <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '2px' }}>
-                                            Архив: <code>{activeModData.matchedFile}</code> | Статус: {activeModData.ruFileExists ? 'Существует в паке перевода' : 'Файл ещё не создан'}
+                                        <h3 style={{ margin: 0, color: '#ffe6c0', fontSize: '1.3rem' }}>{selectedModName}</h3>
+                                        <div style={{ color: '#888888', fontSize: '0.85rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <span>Архив:</span>
+                                            <span className="status-chip">{activeModData.matchedFile}</span>
+                                            <span>|</span>
+                                            <span>Статус: {activeModData.ruFileExists ? 'Существует в паке перевода' : 'Файл ещё не создан'}</span>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        <button className="button" onClick={() => copyText(activeModCfgText)}>
+                                    <div className="button-group">
+                                        <button className="button button-sm" onClick={() => copyText(activeModCfgText)}>
                                             Скопировать .cfg
                                         </button>
-                                        <button className="button-green" onClick={() => downloadFile(activeModCfgText, `${selectedModName}.cfg`)}>
+                                        <button className="button-green button-sm" onClick={() => downloadFile(activeModCfgText, `${selectedModName}.cfg`)}>
                                             Скачать .cfg
                                         </button>
                                         {isConnected && (
                                             <button
-                                                className="button-orange"
+                                                className="button-orange button-sm"
                                                 onClick={() => handleApplyMod(selectedModName)}
                                                 disabled={isApplyingMod}
                                             >
-                                                {isApplyingMod ? 'Запись...' : 'Внести в my-texture-pack'}
+                                                {isApplyingMod ? 'Запись...' : `Внести в ${targetMod}`}
                                             </button>
                                         )}
                                     </div>
                                 </div>
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                                    <div style={{ color: '#ffa200', fontWeight: 'bold' }}>
+                                    <div style={{ color: '#ffa200', fontWeight: 'bold', fontSize: '1rem' }}>
                                         Отсутствующие ключи ({activeModData.missingCount})
                                     </div>
-                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                    <div className="button-group">
                                         <button
-                                            className={viewMode === 'structured' ? 'button-orange' : 'button'}
+                                            className={viewMode === 'structured' ? 'button-orange button-sm' : 'button button-sm'}
                                             onClick={() => setViewMode('structured')}
-                                            style={{ padding: '4px 10px', height: '28px', minWidth: 'auto', fontSize: '0.85rem' }}
                                         >
                                             Таблица
                                         </button>
                                         <button
-                                            className={viewMode === 'raw' ? 'button-orange' : 'button'}
+                                            className={viewMode === 'raw' ? 'button-orange button-sm' : 'button button-sm'}
                                             onClick={() => setViewMode('raw')}
-                                            style={{ padding: '4px 10px', height: '28px', minWidth: 'auto', fontSize: '0.85rem' }}
                                         >
                                             Текст .cfg
                                         </button>
@@ -447,27 +429,47 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                 </div>
 
                                 {viewMode === 'structured' ? (
-                                    <div className="panel-inset" style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '480px', padding: '0.75rem' }}>
+                                    <div className="panel-inset" style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '460px', padding: '0.75rem' }}>
                                         {Object.entries(activeModData.sections).map(([sectionName, keys]) => (
                                             <div key={sectionName} style={{ marginBottom: '1.25rem' }}>
-                                                <h4 style={{ color: '#ffe6c0', margin: '0 0 0.4rem 0', fontFamily: 'monospace' }}>
-                                                    [{sectionName}]
-                                                </h4>
-                                                <table className="panel-hole" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                                <div className="section-header-bar">
+                                                    <span>[{sectionName}]</span>
+                                                    <span className="badge">{Object.keys(keys).length}</span>
+                                                </div>
+                                                <table className="panel-hole">
                                                     <thead>
                                                         <tr>
-                                                            <th style={{ width: '35%', padding: '6px 8px', color: '#ffa200' }}>Ключ</th>
-                                                            <th style={{ padding: '6px 8px', color: '#ffa200' }}>Оригинальный текст (EN)</th>
+                                                            <th style={{ width: '30%' }}>Ключ</th>
+                                                            <th style={{ width: '55%' }}>Оригинальный текст (EN)</th>
+                                                            <th style={{ width: '15%', textAlign: 'center' }}>Действия</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {Object.entries(keys).map(([key, val]) => (
                                                             <tr key={key}>
-                                                                <td className="panel-hole-inner" style={{ padding: '6px 8px', fontFamily: 'monospace', verticalAlign: 'top' }}>
-                                                                    <code>{key}</code>
+                                                                <td className="panel-hole-inner" style={{ fontFamily: 'Consolas, monospace', color: '#ffa200', wordBreak: 'break-all' }}>
+                                                                    {key}
                                                                 </td>
-                                                                <td className="panel-hole-inner" style={{ padding: '6px 8px', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>
+                                                                <td className="panel-hole-inner" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                                                                     {val}
+                                                                </td>
+                                                                <td className="panel-hole-inner" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                                                    <div className="button-group" style={{ justifyContent: 'center' }}>
+                                                                        <button
+                                                                            className="button button-sm"
+                                                                            onClick={() => copyText(key, `Ключ ${key} скопирован`)}
+                                                                            title="Скопировать имя ключа"
+                                                                        >
+                                                                            Ключ
+                                                                        </button>
+                                                                        <button
+                                                                            className="button button-sm"
+                                                                            onClick={() => copyText(`${key}=${val}`, `Строка ${key} скопирована`)}
+                                                                            title="Скопировать строку (ключ=значение)"
+                                                                        >
+                                                                            Строка
+                                                                        </button>
+                                                                    </div>
                                                                 </td>
                                                             </tr>
                                                         ))}
@@ -478,15 +480,15 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                     </div>
                                 ) : (
                                     <textarea
-                                        className="panel-inset"
+                                        className="panel-inset factorio-textarea"
                                         value={activeModCfgText}
                                         readOnly
-                                        style={{ flexGrow: 1, minHeight: '400px' }}
+                                        style={{ flexGrow: 1, minHeight: '440px' }}
                                     />
                                 )}
                             </>
                         ) : (
-                            <div style={{ textAlign: 'center', padding: '3rem', color: '#888' }}>
+                            <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#888888' }}>
                                 Выберите мод из списка слева для просмотра отсутствующих ключей
                             </div>
                         )}
@@ -497,8 +499,8 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
             {/* Empty state when scanned but no missing keys found */}
             {result && scannedMods.length === 0 && (
                 <div className="panel" style={{ textAlign: 'center', padding: '3rem' }}>
-                    <h3 style={{ color: '#2ecc71', marginBottom: '0.5rem' }}>Все активные моды полностью переведены</h3>
-                    <p style={{ color: '#aaa' }}>
+                    <h3 style={{ color: '#2ecc71', margin: '0 0 0.5rem 0' }}>Все активные моды полностью переведены</h3>
+                    <p style={{ color: '#aaaaaa', margin: 0 }}>
                         Проверено {result.summary.totalActiveMods} активных модов. Отсутствующих ключей не обнаружено.
                     </p>
                 </div>

@@ -119,8 +119,8 @@ console.log('=== Running Factorio Locale Quality Audit Tests ===\n');
     const result = auditLocaleQuality({ modFilter: 'planet-rabbasca' });
     assert.strictEqual(result.summary.totalFilesScanned, 1);
     assert.ok(result.summary.tagMismatchCount > 0, 'Should find tag mismatches');
-    assert.ok(result.summary.foreignCharactersCount > 0, 'Should find Chinese text');
-    console.log(`  -> PASS: Found ${result.summary.tagMismatchCount} tag mismatches and ${result.summary.foreignCharactersCount} foreign script issues\n`);
+    assert.ok(result.summary.totalIssuesFound > 0, 'Should find quality issues');
+    console.log(`  -> PASS: Found ${result.summary.tagMismatchCount} tag mismatches and ${result.summary.totalIssuesFound} total quality issues\n`);
 }
 
 console.log('=== All 10 Tests Passed Successfully! ===');

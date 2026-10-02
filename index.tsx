@@ -96,33 +96,35 @@ const App: React.FC = () => {
                 auditIssuesCount={auditIssuesCount}
             />
 
-            {activeTab === 'analyzer' && (
-                <ModAnalyzerTab
-                    isConnected={isLocalServerConnected}
-                    defaultModsDir={defaultModsDir}
-                    selectedLang={selectedLang}
-                    prototypesDb={prototypesDb}
-                />
-            )}
+            <div className="tab-viewport">
+                {activeTab === 'analyzer' && (
+                    <ModAnalyzerTab
+                        isConnected={isLocalServerConnected}
+                        defaultModsDir={defaultModsDir}
+                        selectedLang={selectedLang}
+                        prototypesDb={prototypesDb}
+                    />
+                )}
 
-            {activeTab === 'missing' && (
-                <MissingKeysTab
-                    isConnected={isLocalServerConnected}
-                    defaultModsDir={defaultModsDir}
-                    defaultTargetMod={defaultTargetMod}
-                    selectedLang={selectedLang}
-                    onUpdateMissingCount={setMissingKeysCount}
-                />
-            )}
+                {activeTab === 'missing' && (
+                    <MissingKeysTab
+                        isConnected={isLocalServerConnected}
+                        defaultModsDir={defaultModsDir}
+                        defaultTargetMod={defaultTargetMod}
+                        selectedLang={selectedLang}
+                        onUpdateMissingCount={setMissingKeysCount}
+                    />
+                )}
 
-            {activeTab === 'audit' && (
-                <QualityAuditTab
-                    isConnected={isLocalServerConnected}
-                    defaultModsDir={defaultModsDir}
-                    defaultTargetLocaleDir={defaultTargetLocaleDir}
-                    onUpdateAuditCount={setAuditIssuesCount}
-                />
-            )}
+                {activeTab === 'audit' && (
+                    <QualityAuditTab
+                        isConnected={isLocalServerConnected}
+                        defaultModsDir={defaultModsDir}
+                        defaultTargetLocaleDir={defaultTargetLocaleDir}
+                        onUpdateAuditCount={setAuditIssuesCount}
+                    />
+                )}
+            </div>
         </div>
     );
 };

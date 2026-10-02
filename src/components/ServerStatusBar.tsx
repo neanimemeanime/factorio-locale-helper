@@ -16,57 +16,44 @@ export const ServerStatusBar: React.FC<ServerStatusBarProps> = ({
     onChangeLang
 }) => {
     return (
-        <div className="panel" style={{ padding: '1rem', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div className="panel" style={{ padding: '0.75rem 1.25rem', margin: '0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: '10px',
-                                height: '10px',
-                                borderRadius: '50%',
-                                backgroundColor: isConnected ? '#2ecc71' : '#e74c3c',
-                                boxShadow: isConnected ? '0 0 6px #2ecc71' : '0 0 6px #e74c3c'
-                            }}
-                        />
-                        <strong>Локальный сервер API:</strong>
-                        <span style={{ color: isConnected ? '#2ecc71' : '#aaa' }}>
+                        <span className={`industrial-led ${isConnected ? 'connected' : 'disconnected'}`} />
+                        <strong style={{ color: '#ffe6c0', fontSize: '0.95rem' }}>Локальный API сервер:</strong>
+                        <span style={{ color: isConnected ? '#2ecc71' : '#a6a6a6', fontSize: '0.9rem', fontWeight: 600 }}>
                             {isConnected ? 'Подключен (порт 3001)' : 'Отключен (запустите npm run server)'}
                         </span>
                     </div>
 
+                    <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>
+                        Factorio 2.1+ (Space Age)
+                    </span>
+
                     {isConnected && defaultModsDir && (
-                        <div style={{ color: '#888', fontSize: '0.9rem', marginLeft: '0.5rem' }}>
-                            <span>Папка Factorio: </span>
-                            <code style={{ fontSize: '0.85rem' }}>{defaultModsDir}</code>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.85rem', color: '#a6a6a6' }}>
+                            <span>Папка:</span>
+                            <span className="status-chip" title={defaultModsDir}>{defaultModsDir}</span>
                             {defaultTargetMod && (
                                 <>
-                                    <span style={{ marginLeft: '0.75rem' }}>Таргет-мод: </span>
-                                    <code style={{ fontSize: '0.85rem' }}>{defaultTargetMod}</code>
+                                    <span>Таргет-мод:</span>
+                                    <span className="status-chip" title={defaultTargetMod}>{defaultTargetMod}</span>
                                 </>
                             )}
                         </div>
                     )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <label htmlFor="global-target-lang" style={{ fontWeight: 'bold' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <label htmlFor="global-target-lang" style={{ fontWeight: 'bold', color: '#ffe6c0', fontSize: '0.9rem' }}>
                         Целевой язык:
                     </label>
                     <select
                         id="global-target-lang"
                         value={selectedLang}
                         onChange={(e) => onChangeLang(e.target.value)}
-                        style={{
-                            backgroundColor: '#140f0a',
-                            color: '#ffa200',
-                            border: '1px solid #e39827',
-                            padding: '4px 10px',
-                            borderRadius: '4px',
-                            fontFamily: 'monospace',
-                            cursor: 'pointer'
-                        }}
+                        className="factorio-select"
                     >
                         <option value="ru">Russian (ru)</option>
                         <option value="en">English (en)</option>
