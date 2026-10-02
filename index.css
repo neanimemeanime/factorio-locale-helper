@@ -190,3 +190,18 @@ textarea {
         font-size: 2rem;
     }
 }
+
+/* Tabs & UI helpers in Factorio theme */
+.tabs {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.tabs li a {
+    cursor: pointer !important;
+    user-select: none;
+}
+
+.table-container table tr:hover td {
+    background-color: #3b3a3b !important;
+}

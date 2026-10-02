@@ -6,7 +6,7 @@ import readline from 'readline';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { analyzeModCore } from './analyzer.js';
-import { scanMissingKeys } from './missing_keys_scanner.js';
+import { scanMissingKeys, getDefaultModsDir } from './missing_keys_scanner.js';
 import { auditLocaleQuality } from './locale_quality_auditor.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -270,6 +270,90 @@ function startServer(port = 3001) {
 
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, filePath: outPath }));
+                } catch (err) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
+        if (req.method === 'GET' && urlObj.pathname === '/api/defaults') {
+            const defModsDir = getDefaultModsDir();
+            const defTargetMod = 'my-texture-pack';
+            const defTargetLocale = path.join(defModsDir, defTargetMod, 'locale', 'ru');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                modsDir: defModsDir,
+                targetMod: defTargetMod,
+                targetLocaleDir: defTargetLocale,
+                targetLangs: ['ru', 'en', 'de', 'fr', 'es', 'zh-CN']
+            }));
+            return;
+        }
+
+        if (req.method === 'POST' && urlObj.pathname === '/api/scan-missing') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const params = JSON.parse(body || '{}');
+                    const result = scanMissingKeys({
+                        modsDir: params.modsDir,
+                        targetMod: params.targetMod,
+                        lang: params.lang,
+                        modFilter: params.modFilter || params.filter,
+                        writeDir: params.writeDir,
+                        writeToTarget: params.writeToTarget === true
+                    });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, result }));
+                } catch (err) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
+        if (req.method === 'POST' && urlObj.pathname === '/api/audit-quality') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const params = JSON.parse(body || '{}');
+                    const result = auditLocaleQuality({
+                        targetLocaleDir: params.targetPath || params.targetLocaleDir,
+                        modsDir: params.modsDir,
+                        modFilter: params.modFilter || params.filter,
+                        issueType: params.issueType || 'all',
+                        limit: typeof params.limit === 'number' ? params.limit : 100
+                    });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, result }));
+                } catch (err) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
+        if (req.method === 'POST' && urlObj.pathname === '/api/apply-missing') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const params = JSON.parse(body || '{}');
+                    const result = scanMissingKeys({
+                        modsDir: params.modsDir,
+                        targetMod: params.targetMod,
+                        lang: params.lang,
+                        modFilter: params.modName || params.modFilter,
+                        writeToTarget: true
+                    });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, result }));
                 } catch (err) {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: err.message }));
