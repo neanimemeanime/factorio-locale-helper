@@ -1,0 +1,29 @@
+{
+  "name": "factorio-mod-localization-helper",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cli": "node cli.js",
+    "server": "node cli.js --server",
+    "mcp": "node cli.js --mcp",
+    "duplicates": "python manage_duplicates.py",
+    "scan": "node cli.js --scan-missing",
+    "audit": "node cli.js --audit",
+    "test": "node test_suite.js"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

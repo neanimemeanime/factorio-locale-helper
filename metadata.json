@@ -1,0 +1,29 @@
+{
+  "name": "Factorio Mod Localization Helper",
+  "version": "1.0.0",
+  "author": "neanimemeanime",
+  "description": "A client-side web application designed for Factorio modders and translators. It analyzes a mod's .zip archive, intelligently parses .lua prototypes and .cfg locale files to find all missing localization keys, and generates a clean, comprehensive locale.cfg file ready for translation.",
+  "keywords": [
+    "Factorio",
+    "modding",
+    "localization",
+    "translation",
+    "parser",
+    "helper-tool",
+    "React",
+    "TypeScript",
+    "client-side"
+  ],
+  "features": [
+    "In-browser .zip archive analysis",
+    "Advanced Lua prototype parser with support for complex rules",
+    "Cascade/Fallback logic for items and recipes",
+    "Detection of dynamic localization templates via recipe categories",
+    "Robust .cfg parser that filters invalid keys",
+    "Automated cleaner to remove vanilla Factorio keys",
+    "Generates a complete source .cfg, a mod-only `locale.cfg`, and a list of removed keys"
+  ],
+  "license": "MIT",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

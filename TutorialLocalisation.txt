@@ -1,0 +1,155 @@
+File format
+Translations are stored as .cfg files, with the following format:
+
+welcome-message=Hello world
+[category]
+title=Category related title
+# Comment
+; Another comment
+Any whitespace after or before = is included in the key or string, so title =Category related title will give an unknown key error if you are looking for the title key, since it is the title  key.
+
+category can be one of the existing locale categories, which permits implicit search mechanisms to find translations, but may also be another key, such as [my-mod-messages]. These are accessible the same as other translations, e.g. {"my-mod-messages.hello"}
+
+These files are located within the language code of the language in the locale folder of the mod, so as an English example __mod__/locale/en/any_name_here.cfg. There can be more than 1 file per language, all of them will be read.
+
+Localising simple strings
+The simplest localisation is of items, entities etc. If we say the item is iron-plate, the game will then search all loaded locale files for item-name.iron-plate and item-description.iron-plate, which in the locale file looks like this:
+
+[item-name]
+iron-plate=Iron plate
+[item-description]
+iron-plate=A plate made of iron.
+If found in the locale, the label is set to this string. If not found, the game will instead show: Unknown key: "item-name.iron-plate"
+
+In script, the localised string is formatted as {"category.name"}, so game.print({"item-name.iron-plate"}) prints Iron plate.
+
+It is possible to use rich text features in the localised text if the location where the text is shown supports it, e.g. in the chat, prototype names and prototype tooltips.
+
+\n can be used for line breaks if the location where the text is shown supports multiline text.
+
+The list of all localization categories used by the base game is:
+
+Localization categories
+Localising with parameters
+For more complex strings, localisation parameters can be used. For instance we want to show Time left: 10 minutes.
+
+So a key with a placeholder is defined, which is replaced by the first parameter after the locale key.:
+
+time-left=Time left: __1__ minutes.
+So it is used like this:
+
+game.print({"time-left", 10})
+It also works with multiple parameters:
+
+game.print({"time-left", 10, 45})
+time-left=Time left: __1__ minutes and __2__ seconds.
+Which results in Time left: 10 minutes and 45 seconds.
+
+Built-in parameters
+For some situations, we use localisation to show control schemes. For instance we want to say:
+
+technology-prompt=Use T to open the technology screen
+However the player may have rebound the key, but we can’t figure out which key as it would not be deterministic. So instead we use the built-in replacement functionality
+
+technology-prompt=Use __CONTROL__open-technology-gui__ to open the technology screen.
+We can also use this for items and entities:
+
+big-iron-plate=Big __ITEM__iron-plate__
+tiny-gun-turret=Tiny __ENTITY__gun-turret__
+List of built-in parameters
+name is the name of an internal game control or a prototype name, depending on context. n can be 1 or 2, it's used in parameters that control alternate input names. For a list of internal game control names, see CustomInputPrototype::linked_game_control.
+
+__CONTROL__name__ - The combination of modifiers and input, such as "Control + Alt + Left-click", or "Not set".
+__CONTROL_MODIFIER__name__ - The modifiers, such as "ControlShift", or, "No modifier selected."
+__CONTROL_STYLE_BEGIN__
+__CONTROL_STYLE_END__
+__CONTROL_LEFT_CLICK__ is replaced with control-keys.mouse-button-1 or control-keys.controller-b[1]
+__CONTROL_RIGHT_CLICK__ is replaced with control-keys.mouse-button-2 or control-keys.controller-x
+__CONTROL_KEY_SHIFT__ is replaced with control-keys.shift or control-keys.controller-leftshoulder
+__CONTROL_KEY_CTRL__ is replaced with control-keys.control or control-keys.controller-rightshoulder
+__ALT_CONTROL_LEFT_CLICK__n__ is replaced with control-keys.mouse-button-1-alt-n or control-keys.controller-button-alt-n (with parameter control-keys.controller-b)
+__ALT_CONTROL_RIGHT_CLICK__n__ is replaced with control-keys.mouse-button-2-alt-n or control-keys.controller-button-alt-n (with parameter control-keys.controller-x)
+__REMARK_COLOR_BEGIN__
+__REMARK_COLOR_END__
+__ALT_CONTROL__n__name__
+__CONTROL_MOVE__ - The Movement keys, squished together. Example: "WASD", from a conventional QWERTY English keyboard.
+__ENTITY__name__ - The localised name of the EntityPrototype subclass.
+__ITEM__name__ - The localised name of the ItemPrototype or subclass.
+__TILE__name__ - The localised name of the TilePrototype.
+__FLUID__name__ - The localised name of the FluidPrototype.
+Plurals
+Pluralization can be used in any string that uses a parameter (e.g. __1__) that is numeric, so something like an amount of minutes. It can be used multiple times per string.
+
+format-days=__1__ __plural_for_parameter__1__{1=day|rest=days}__
+This results in "1 day" and "2 days" / "500 days" etc.
+
+The number after __plural_for_parameter__ denotes which parameter is used to determine the plural. This is the parameter 1 in the above example. Anything inside the {} is used to make the plural. Each plural form is separated by a |. The text in front of the = determines for what the plural form is used. Options for this are:
+
+a simple number, e.g. "1".
+Multiple numbers, e.g. "2,3,4".
+What the number ends with, e.g. "ends in 11" or "ends in 1"
+Multiple ends with, e.g. "ends in 1,ends in 2,ends in 12".
+"decimal" for any number with a fractional part.
+"rest" to give the default plural.
+Plural forms may be empty or contain other keys such as __1__ or spaces. This allows rather large plural forms:
+
+__plural_for_parameter__1__{1=__1__ player is|rest=__1__ players are}__ connecting
+The system chooses the first fitting plural that it encounters when multiple would fit:
+
+__plural_for_parameter__1__{ends in 12=option 1|ends in 2=option 2|rest=option 3}__
+This will result in "option 1" for 12 and in "option 2" for 22 and in "option 3" for numbers not ending with 2.
+
+Concatenating localised strings
+The special locale key: "" is used to concatenate, as the table format does not support concatenation:
+
+game.print({"", {"item-name.iron-plate"}, ": ", 60})
+Will result in: Iron plate: 60
+
+Localising alternate input names
+In the introduction campaign, a special locale system is used for informing players how to do certain actions with their mouse. The normal form is to use eg:
+
+how-to-build=Use __CONTROL__build__ to place a building
+which results in "Use Left mouse button to place a building". A more natural phrasing would be "Left-click to place a building", which can be achieved by using the following:
+
+how-to-build=__ALT_CONTROL__1__build__ to place a building
+These "alt" versions are controlled by a few special locale keys, mouse-button-X-alt-1 and mouse-button-X-alt-2. In English, form 1 produces eg "Left-click", and form 2 produces eg "Left-clicking". Only two alt forms ("1" and "2") are available at the moment, but if this a problem for some languages, more forms may be added in the future. Extra mouse buttons, mouse scroll and keyboard keys are handled through the mouse-button-n-alt-1/2, mouse-wheel-alt-1/2 and keyboard-alt-1/2 keys, which just take the normal name and prepend something like "Press/Pressing", or "Scroll/Scrolling".
+
+When translating to another language, you can use whatever forms you want here, but the important part is that you are consistent when you use the alt-forms everywhere else. It does not necessarily make sense to just copy the usages of alt forms from the English locale, and for some languages it may be more natural to simply not use this system at all.
+
+Accessing the localised result in code
+While usually unneeded, it is possible to read the resulting localised text in code, for example to search in localised names.
+
+See LuaPlayer::request_translation, LuaPlayer::request_translations and on_string_translated event.
+
+Default Behavior(s) for finding an Unspecified Localised String
+If a localised_string is not defined in the prototype for certain prototype classes, e.g. entity, item, Factorio may have a default search behavior.
+
+Determining an item's localised name: Note: the angle brackets are meant to mean a generic term, they are not part of the actual string. Also, place_result and placed_as_equipment_result are strings, and Factorio fetches the matching prototype to examine.
+
+if localised_name is provided in the item prototype and it is not empty {}, use the provided value
+else if there is place_result and it has localised_name that is not an empty table: {}, use the localised_name of place_result
+else if there is place_result with an empty localised_name, use {"entity-name.<entity prototype name>"}
+else if there is placed_as_equipment_result and it has a localised_name that is not an empty table: {}, use the localised_name of placed_as_equipment_result
+else if there is placed_as_equipment_result with empty localised_name, use {"equipment-name.<equipment name>"}
+else use default {"item-name.<item name>"}
+Reference: [2]
+
+Example: The transport-belt item does not have a localised_name, so 1->2. There is a place result, but not localised_name in the entity prototype. 2->3. The place result lacks a localised_name. Use the localised string {"entity-name.transport-belt"}
+
+Such defaults often include a "leading key" using [<group>-name] or [<group>-description] (such as [recipe-name], [mod-setting-description]). However, each prototype may have a distinct search behavior before using those, based on presence/absence of values in the prototype. RecipePrototype for example may use the first product's localised_name, or the main_product's localised_name, or the localised string found in {"recipe-name.<recipe name>"], depending on values provided (and lacking) in the prototype.
+
+The locale for mod settings works like any other locale in the game. The names of the groups for the setting name and description (tooltip) are "mod-setting-name" and "mod-setting-description". The dropdown items of a string setting can be localized in the "string-mod-setting" group, but the game falls back to just showing the name of the dropdown item if no localization is found. An example for mod setting localization that would be set within "locale/en/locale.cfg", is:
+
+[mod-setting-name]
+my-mod-string-test-setting=Localized test setting name
+
+[mod-setting-description]
+my-mod-string-test-setting=Localized test setting description
+
+[string-mod-setting]
+#<setting-name>-<dropdown-item-name>=<translated dropdown item>
+my-mod-string-test-setting-item-1=Item 1 localized string
+
+[string-mod-setting-description]
+#<setting-name>-<dropdown-item-name>=<tooltip of dropdown item>
+my-mod-string-test-setting-item-1=Item 1 localized tooltip
