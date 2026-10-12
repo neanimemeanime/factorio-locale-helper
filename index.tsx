@@ -12,7 +12,7 @@ const App: React.FC = () => {
     const [selectedLang, setSelectedLang] = useState('ru');
 
     const [defaultModsDir, setDefaultModsDir] = useState('');
-    const [defaultTargetMod, setDefaultTargetMod] = useState('my-texture-pack');
+    const [defaultTargetMod, setDefaultTargetMod] = useState('locale-mod');
     const [defaultTargetLocaleDir, setDefaultTargetLocaleDir] = useState('');
 
     const [prototypesDb, setPrototypesDb] = useState<Set<string>>(new Set());
@@ -77,7 +77,7 @@ const App: React.FC = () => {
             <header>
                 <h1>Factorio Mod Localization Helper</h1>
                 <p>
-                    Инструмент анализа, пакетного поиска недостающих ключей и контроля качества локализации модов Factorio 2.1+ (Space Age).
+                    Comprehensive tool for prototype analysis, batch missing key scanning, syntax validation, and quality auditing for Factorio 2.1+ (Space Age) mods.
                 </p>
             </header>
 

@@ -21,9 +21,9 @@ export const ServerStatusBar: React.FC<ServerStatusBarProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span className={`industrial-led ${isConnected ? 'connected' : 'disconnected'}`} />
-                        <strong style={{ color: '#ffe6c0', fontSize: '0.95rem' }}>Локальный API сервер:</strong>
+                        <strong style={{ color: '#ffe6c0', fontSize: '0.95rem' }}>Local API Server:</strong>
                         <span style={{ color: isConnected ? '#2ecc71' : '#a6a6a6', fontSize: '0.9rem', fontWeight: 600 }}>
-                            {isConnected ? 'Подключен (порт 3001)' : 'Отключен (запустите npm run server)'}
+                            {isConnected ? 'Connected (port 3001)' : 'Disconnected (run: npm run server)'}
                         </span>
                     </div>
 
@@ -33,11 +33,11 @@ export const ServerStatusBar: React.FC<ServerStatusBarProps> = ({
 
                     {isConnected && defaultModsDir && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.85rem', color: '#a6a6a6' }}>
-                            <span>Папка:</span>
+                            <span>Mods Dir:</span>
                             <span className="status-chip" title={defaultModsDir}>{defaultModsDir}</span>
                             {defaultTargetMod && (
                                 <>
-                                    <span>Таргет-мод:</span>
+                                    <span>Target Mod:</span>
                                     <span className="status-chip" title={defaultTargetMod}>{defaultTargetMod}</span>
                                 </>
                             )}
@@ -47,7 +47,7 @@ export const ServerStatusBar: React.FC<ServerStatusBarProps> = ({
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     <label htmlFor="global-target-lang" style={{ fontWeight: 'bold', color: '#ffe6c0', fontSize: '0.9rem' }}>
-                        Целевой язык:
+                        Target Language:
                     </label>
                     <select
                         id="global-target-lang"
@@ -55,8 +55,8 @@ export const ServerStatusBar: React.FC<ServerStatusBarProps> = ({
                         onChange={(e) => onChangeLang(e.target.value)}
                         className="factorio-select"
                     >
-                        <option value="ru">Russian (ru)</option>
                         <option value="en">English (en)</option>
+                        <option value="ru">Russian (ru)</option>
                         <option value="de">German (de)</option>
                         <option value="fr">French (fr)</option>
                         <option value="es">Spanish (es)</option>

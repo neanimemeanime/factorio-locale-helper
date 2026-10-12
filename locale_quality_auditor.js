@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { parseCfgText, getDefaultModsDir, compareVersions, parseModEntry } from './missing_keys_scanner.js';
 import { readZipEntries } from './zip_reader.js';
+import { loadConfig } from './config_loader.js';
 
 /**
  * Whitelist of purely technical acronyms, hotkeys, file formats, and chemical formulas
@@ -14,6 +15,7 @@ export const WHITELIST_WORDS = new Set([
     // Software & UI technical abbreviations
     'gui', 'ui', 'hud', 'api', 'id', 'fps', 'ups', 'lua', 'python', 'rgb', 'rgba', 'hex',
     'json', 'xml', 'csv', 'png', 'jpg', 'ogg', 'wav', 'zip', 'ram', 'vram', 'cpu', 'gpu',
+    'fnei',
     // Input & Hotkeys
     'shift', 'ctrl', 'alt', 'tab', 'enter', 'space', 'esc', 'wasd', 'lmb', 'rmb', 'mmb',
     // Electrical & frequency units of measurement
@@ -22,7 +24,11 @@ export const WHITELIST_WORDS = new Set([
     // Technical tier and version markers
     'mk', 'mk1', 'mk2', 'mk3', 'mk4', 'mk5', 'v1', 'v2', 'v3',
     // Chemistry symbols & common formulas
-    'co', 'h2o', 'sio', 'casio', 'fecus', 'pu'
+    'co', 'h2o', 'sio', 'casio', 'fecus', 'pu',
+    'o2', 'n2', 'h2', 'cl2', 'ch4', 'nh3', 'so2',
+    'fe', 'cu', 'ti', 'al', 'si', 'li', 'na', 'k', 'ca', 'mg', 'zn', 'ag', 'au', 'pt', 'pb', 'u',
+    // Technical tokens & configuration terms
+    'ears', 'tier', 'slot', 'slots', 'max', 'min', 'step', 'offset'
 ]);
 
 /**
@@ -38,7 +44,9 @@ export function cleanFactorioText(val) {
         // Replace escaped newlines
         .replace(/\\n/g, ' ')
         // Tags: [item=...], [fluid=...], [planet=...], [color=...], etc.
-        .replace(/\[\/?([a-zA-Z0-9_-]+)(=[^\]]*)?\]/g, ' ')
+        // Strips tags with slashes ([img=utility/check_mark], [img=item/copper-cable])
+        // and parameters ([item=stone,quality=epic])
+        .replace(/\[\/?\s*[a-zA-Z0-9_/-]+(?:\s*=\s*[^\]]*)?\]/gi, ' ')
         // Hex / color tags [color=1,0,0] and hex codes like #EA1100
         .replace(/\[color=[^\]]*\]|\[\/color\]|\[font=[^\]]*\]|\[\/font\]/gi, ' ')
         .replace(/#[0-9a-fA-F]{3,8}\b/g, ' ')
@@ -63,6 +71,10 @@ export function cleanFactorioText(val) {
         .replace(/\b\d+(\.\d+)?\s*(kw|mw|gw|tw|kj|mj|gj|tj|w|j|v|a|rpm|km\/h|m\/s|m|km|mm|cm|s|ms|min|h|fps|ups|%)\b/gi, ' ')
         // Versions like v1.0.4
         .replace(/\bv?\d+(\.\d+)+\b/gi, ' ')
+        // Dimensions like 2x2, 1x1, 50x50 and multipliers like 1x, 5x, 25x, x1000
+        .replace(/\b\d+x\d+\b/gi, ' ')
+        .replace(/\b\d+x\b/gi, ' ')
+        .replace(/\bx\d+\b/gi, ' ')
         .trim();
 }
 
@@ -106,8 +118,8 @@ export function extractFactorioTokens(str) {
     }
     extractPairsRecursive(str);
 
-    // 4. Standalone tags: [item=...], [fluid=...], [entity=...], [virtual-signal=...], etc.
-    const standaloneRegex = /\[([a-zA-Z0-9_-]+(?:=[^\]]+)?)\]/g;
+    // 4. Standalone tags: [item=...], [fluid=...], [entity=...], [virtual-signal=...], [img=utility/check_mark], etc.
+    const standaloneRegex = /\[([a-zA-Z0-9_/-]+(?:=[^\]]+)?)\]/g;
     while ((m = standaloneRegex.exec(str)) !== null) {
         const fullTag = m[0].toLowerCase();
         if (/^\[\/?(color|font|tooltip)(=[^\]]+)?\]$/i.test(fullTag)) continue;
@@ -165,22 +177,53 @@ export function compareTokens(origStr, transStr) {
         }
     }
 
+    // Relax color tag matching: if paired color tags are preserved in translation,
+    // match them up so semantic color differences (e.g. yellow vs orange, named vs rgb)
+    // don't trigger false positive missing/extra tags.
+    const missingColorIndices = [];
+    for (let i = 0; i < missing.length; i++) {
+        if (/^\[color=[^\]]+\]\[\/color\]$/i.test(missing[i])) {
+            missingColorIndices.push(i);
+        }
+    }
+
+    const extraColorIndices = [];
+    for (let i = 0; i < extra.length; i++) {
+        if (/^\[color=[^\]]+\]\[\/color\]$/i.test(extra[i])) {
+            extraColorIndices.push(i);
+        }
+    }
+
+    const matchedColorsCount = Math.min(missingColorIndices.length, extraColorIndices.length);
+    if (matchedColorsCount > 0) {
+        const removeMissing = new Set(missingColorIndices.slice(0, matchedColorsCount));
+        const removeExtra = new Set(extraColorIndices.slice(0, matchedColorsCount));
+
+        const newMissing = missing.filter((_, idx) => !removeMissing.has(idx));
+        const newExtra = extra.filter((_, idx) => !removeExtra.has(idx));
+
+        missing.length = 0;
+        missing.push(...newMissing);
+        extra.length = 0;
+        extra.push(...newExtra);
+    }
+
     // Check syntax errors in translated string (e.g. unclosed color or font tags)
     const syntaxErrors = [];
     const openColorMatches = (transStr || '').match(/\[color=[^\]]+\]/gi) || [];
     const closeColorMatches = (transStr || '').match(/\[\/color\]/gi) || [];
     if (openColorMatches.length > closeColorMatches.length) {
-        syntaxErrors.push(`Не закрыт тег [color=...] (открыто: ${openColorMatches.length}, закрыто: ${closeColorMatches.length})`);
+        syntaxErrors.push(`Unclosed [color=...] tag (opened: ${openColorMatches.length}, closed: ${closeColorMatches.length})`);
     } else if (closeColorMatches.length > openColorMatches.length) {
-        syntaxErrors.push(`Лишний закрывающий тег [/color] (открыто: ${openColorMatches.length}, закрыто: ${closeColorMatches.length})`);
+        syntaxErrors.push(`Extra closing [/color] tag (opened: ${openColorMatches.length}, closed: ${closeColorMatches.length})`);
     }
 
     const openFontMatches = (transStr || '').match(/\[font=[^\]]+\]/gi) || [];
     const closeFontMatches = (transStr || '').match(/\[\/font\]/gi) || [];
     if (openFontMatches.length > closeFontMatches.length) {
-        syntaxErrors.push(`Не закрыт тег [font=...] (открыто: ${openFontMatches.length}, закрыто: ${closeFontMatches.length})`);
+        syntaxErrors.push(`Unclosed [font=...] tag (opened: ${openFontMatches.length}, closed: ${closeFontMatches.length})`);
     } else if (closeFontMatches.length > openFontMatches.length) {
-        syntaxErrors.push(`Лишний закрывающий тег [/font] (открыто: ${openFontMatches.length}, закрыто: ${closeFontMatches.length})`);
+        syntaxErrors.push(`Extra closing [/font] tag (opened: ${openFontMatches.length}, closed: ${closeFontMatches.length})`);
     }
 
     return {
@@ -225,10 +268,11 @@ export function detectForeignCharacters(val) {
     }
 
     // 2. Latin / English words
-    const rawLatinWords = cleaned.match(/[a-zA-Z]{2,}/g) || [];
+    const rawLatinWords = cleaned.match(/\b[a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*\b/g) || [];
     const suspiciousLatin = rawLatinWords
         .map(w => w.toLowerCase())
-        .filter(w => !WHITELIST_WORDS.has(w));
+        .filter(w => !WHITELIST_WORDS.has(w))
+        .filter(w => w.length >= 2);
 
     if (suspiciousLatin.length > 0) {
         detected.latin = suspiciousLatin;
@@ -241,6 +285,8 @@ export function detectForeignCharacters(val) {
         if (/\p{Script=Cyrillic}/u.test(word)) continue;
         if (/\p{Script=Latin}/u.test(word)) continue;
         if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(word)) continue;
+        // Scientific symbols: Greek letters used in physics / math (Δ, Ω, μ, etc.)
+        if (/^[ΔΩμπαβγδεθλστφψ]+$/u.test(word)) continue;
         detected.other.push(word);
         detected.languages.add('other');
     }
@@ -347,18 +393,18 @@ export function loadModEnSections(modName, modsDir, targetLocaleDir, cache = new
 }
 
 /**
- * Resolves the default target locale directory (my-texture-pack/locale/ru).
+ * Resolves the default target locale directory from configuration.
  */
 export function getDefaultTargetLocaleDir() {
-    const modsDir = getDefaultModsDir();
-    return path.join(modsDir, 'my-texture-pack', 'locale', 'ru');
+    const config = loadConfig();
+    return config.targetLocaleDir;
 }
 
 /**
- * Audits Russian localization files in the target mod for:
+ * Audits localization files in the target mod for:
  * 1. Tag & placeholder mismatches against original English (missing [color=green][/color], __2__, etc.)
  * 2. Foreign characters from other languages (cn, jp, kr, other scripts)
- * 3. Mixed language strings (Latin words inside Russian sentences)
+ * 3. Mixed language strings (Latin words inside translated sentences)
  * 4. Completely untranslated English strings
  *
  * @param {object} [options]
@@ -370,8 +416,9 @@ export function getDefaultTargetLocaleDir() {
  * @returns {object} Audit report structure.
  */
 export function auditLocaleQuality(options = {}) {
-    const targetLocaleDir = options.targetLocaleDir || getDefaultTargetLocaleDir();
-    const modsDir = options.modsDir || getDefaultModsDir();
+    const config = loadConfig();
+    const targetLocaleDir = options.targetLocaleDir || config.targetLocaleDir;
+    const modsDir = options.modsDir || config.modsDir;
     const modFilter = options.modFilter ? options.modFilter.trim().toLowerCase() : null;
     const rawIssueType = (options.issueType || 'all').toLowerCase();
     const limit = typeof options.limit === 'number' ? options.limit : 100;
@@ -414,10 +461,10 @@ export function auditLocaleQuality(options = {}) {
                         if (rawIssueType === 'all' || rawIssueType === 'tags' || rawIssueType === 'tag_mismatch') {
                             const descParts = [];
                             if (tokenCmp.missing.length > 0) {
-                                descParts.push(`Отсутствуют в переводе: ${tokenCmp.missing.join(', ')}`);
+                                descParts.push(`Missing in translation: ${tokenCmp.missing.join(', ')}`);
                             }
                             if (tokenCmp.syntaxErrors.length > 0) {
-                                descParts.push(`Синтаксис: ${tokenCmp.syntaxErrors.join('; ')}`);
+                                descParts.push(`Syntax: ${tokenCmp.syntaxErrors.join('; ')}`);
                             }
                             issues.push({
                                 type: 'tag_mismatch',
@@ -451,7 +498,7 @@ export function auditLocaleQuality(options = {}) {
                                 missingTags: [],
                                 extraTags: [],
                                 syntaxErrors: tokenCmp.syntaxErrors,
-                                description: `Синтаксис тегов: ${tokenCmp.syntaxErrors.join('; ')}`
+                                description: `Tag syntax error: ${tokenCmp.syntaxErrors.join('; ')}`
                             });
                         }
                     }
@@ -475,7 +522,7 @@ export function auditLocaleQuality(options = {}) {
                                 text: val,
                                 languages: nonLatinLangs,
                                 foreignCharacters: foreignChars,
-                                description: `В строке обнаружены символы других языков (${nonLatinLangs.join(', ')}): ${foreignChars.join(', ')}`
+                                description: `Non-target characters detected (${nonLatinLangs.join(', ')}): ${foreignChars.join(', ')}`
                             });
                         }
                     }
@@ -496,7 +543,7 @@ export function auditLocaleQuality(options = {}) {
                                         text: val,
                                         languages: ['en'],
                                         suspiciousWords: foreign.suspiciousLatin,
-                                        description: `Строка не переведена на русский (найдены английские слова: ${foreign.suspiciousLatin.join(', ')})`
+                                        description: `Untranslated text (detected words: ${foreign.suspiciousLatin.join(', ')})`
                                     });
                                 }
                             }
@@ -513,7 +560,7 @@ export function auditLocaleQuality(options = {}) {
                                     text: val,
                                     languages: ['en'],
                                     suspiciousWords: foreign.suspiciousLatin,
-                                    description: `Смесь русского и английского языков (непереведённые слова: ${foreign.suspiciousLatin.join(', ')})`
+                                    description: `Mixed language detected (untranslated words: ${foreign.suspiciousLatin.join(', ')})`
                                 });
                             }
                         }

@@ -1,20 +1,37 @@
 import os
 import sys
 import glob
+import json
 import argparse
 
 # ---------------------------------------------------------------------------
-# Factorio Steam paths detection
+# Factorio Steam paths & configuration detection
 # ---------------------------------------------------------------------------
 DEFAULT_STEAM_DATA_PATHS = [
     r"D:\SteamLibrary\steamapps\common\Factorio\data",
     r"C:\Program Files (x86)\Steam\steamapps\common\Factorio\data",
     r"C:\Program Files\Steam\steamapps\common\Factorio\data",
     r"E:\SteamLibrary\steamapps\common\Factorio\data",
+    os.path.expanduser("~/.steam/steam/steamapps/common/Factorio/data"),
+    os.path.expanduser("~/Library/Application Support/Steam/steamapps/common/Factorio/data"),
 ]
 
+def load_local_config():
+    """Loads config.json from project directory if available."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+CONFIG = load_local_config()
+
 def find_steam_factorio_data():
-    env_path = os.environ.get("FACTORIO_DATA")
+    env_path = os.environ.get("FACTORIO_DATA") or CONFIG.get("steamDataDir")
     if env_path and os.path.isdir(env_path):
         return env_path
     
@@ -28,8 +45,28 @@ STEAM_DATA_DIR = find_steam_factorio_data() or r"D:\SteamLibrary\steamapps\commo
 # Standard modules in Factorio 2.1+ Space Age
 KNOWN_MODULES = ["core", "base", "space-age", "quality", "elevated-rails", "recycler"]
 
-# Default mod directory
-DEFAULT_MOD_LOCALE_DIR = r"c:\Users\Админ\AppData\Roaming\Factorio\mods\my-texture-pack\locale\ru"
+def get_default_mods_dir():
+    env_mods = os.environ.get("FACTORIO_MODS") or CONFIG.get("modsDir")
+    if env_mods and os.path.isdir(env_mods):
+        return env_mods
+    if sys.platform == "win32":
+        app_data = os.environ.get("APPDATA") or os.path.expanduser(r"~\AppData\Roaming")
+        return os.path.join(app_data, "Factorio", "mods")
+    elif sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/factorio/mods")
+    else:
+        return os.path.expanduser("~/.factorio/mods")
+
+def get_default_mod_locale_dir(lang="ru"):
+    mods_dir = get_default_mods_dir()
+    target_mod = os.environ.get("FACTORIO_TARGET_MOD") or CONFIG.get("targetMod")
+    if not target_mod:
+        if os.path.isdir(os.path.join(mods_dir, "my-texture-pack")):
+            target_mod = "my-texture-pack"
+        else:
+            target_mod = "locale-mod"
+    target_lang = os.environ.get("FACTORIO_TARGET_LANG") or CONFIG.get("targetLang") or lang
+    return os.path.join(mods_dir, target_mod, "locale", target_lang)
 
 def parse_cfg_file(filepath):
     parsed = {}
@@ -49,7 +86,7 @@ def parse_cfg_file(filepath):
                     val = parts[1].strip()
                     parsed[(current_section, key)] = val
     except Exception as e:
-        print(f"Ошибка при чтении {filepath}: {e}")
+        print(f"Error reading {filepath}: {e}")
     return parsed
 
 def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
@@ -60,7 +97,7 @@ def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
     modules_found = []
 
     if not os.path.exists(data_dir):
-        print(f"ВНИМАНИЕ: Папка данных Factorio не найдена: {data_dir}")
+        print(f"WARNING: Factorio data directory not found: {data_dir}")
         return vanilla_keys, modules_found
 
     # Look through known modules and any extra directories containing locale/<lang>
@@ -105,16 +142,26 @@ def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
 
 def is_protected_key(lines, idx):
     """
-    Checks if the key at idx is preceded by developer warning comments:
-    FOUND IN LUA, DYNAMIC LOCALIZATION, or MISSING IN LOCALE.
+    Checks if the key at idx is protected from duplicate removal:
+    - Preceded by or containing developer comments:
+      FOUND IN LUA, DYNAMIC LOCALIZATION, MISSING IN LOCALE, or MOD OVERRIDE.
     """
+    curr_line = lines[idx].upper()
+    if "MOD OVERRIDE" in curr_line:
+        return True
+
     for j in range(idx - 1, -1, -1):
         prev_line = lines[j].strip()
         if not prev_line:
             continue
         if prev_line.startswith('#') or prev_line.startswith(';'):
             upper_line = prev_line.upper()
-            if "FOUND IN LUA" in upper_line or "DYNAMIC LOCALIZATION" in upper_line or "MISSING IN LOCALE" in upper_line:
+            if (
+                "FOUND IN LUA" in upper_line
+                or "DYNAMIC LOCALIZATION" in upper_line
+                or "MISSING IN LOCALE" in upper_line
+                or "MOD OVERRIDE" in upper_line
+            ):
                 return True
             if '=' in prev_line:
                 break
@@ -125,8 +172,12 @@ def is_protected_key(lines, idx):
 def resolve_target_dir(raw_path, lang="ru"):
     """
     Resolves drag-and-dropped folder or given path to the proper locale directory.
+    Handles quotes, trailing slashes, normalized paths, and relative paths robustly.
     """
+    if not raw_path:
+        return ""
     cleaned = raw_path.strip().strip('"').strip("'")
+    cleaned = os.path.normpath(os.path.abspath(cleaned))
     if not os.path.exists(cleaned):
         return cleaned
 
@@ -150,12 +201,12 @@ def resolve_target_dir(raw_path, lang="ru"):
 
 def process_files(target_dir, vanilla_keys, action):
     if not os.path.exists(target_dir):
-        print(f"Ошибка: Директория мода не найдена: {target_dir}")
+        print(f"Error: Mod directory not found: {target_dir}")
         return 0, 0
 
     mod_cfg_files = glob.glob(os.path.join(target_dir, "**", "*.cfg"), recursive=True)
     if not mod_cfg_files:
-        print(f"В директории {target_dir} не найдено .cfg файлов!")
+        print(f"No .cfg files found in {target_dir}!")
         return 0, 0
 
     total_duplicates = 0
@@ -171,7 +222,7 @@ def process_files(target_dir, vanilla_keys, action):
             with open(filepath, 'r', encoding='utf-8-sig', errors='ignore') as f:
                 lines = f.readlines()
         except Exception as e:
-            print(f"Ошибка чтения {rel_path}: {e}")
+            print(f"Error reading {rel_path}: {e}")
             continue
 
         new_lines = []
@@ -211,10 +262,10 @@ def process_files(target_dir, vanilla_keys, action):
                 total_duplicates += 1
 
                 if action == "status":
-                    status_str = "ЗАКОММЕНТИРОВАН" if is_commented else "АКТИВЕН"
+                    status_str = "COMMENTED" if is_commented else "ACTIVE"
                     print(f"[{status_str}] {rel_path} -> [{current_section}] {key} = {val}")
                     for v in vanilla_keys[(current_section, key)]:
-                        print(f"   -> Ваниль ({v['module']}): {v['value']}")
+                        print(f"   -> Vanilla ({v['module']}): {v['value']}")
                     new_lines.append(line)
                 elif action == "comment":
                     if not is_commented:
@@ -223,7 +274,7 @@ def process_files(target_dir, vanilla_keys, action):
                         new_lines.append(new_line)
                         modified = True
                         total_modified += 1
-                        print(f"[КОММЕНТИРОВАНИЕ] {rel_path} -> [{current_section}] #{key}={val}")
+                        print(f"[COMMENTED] {rel_path} -> [{current_section}] #{key}={val}")
                     else:
                         new_lines.append(line)
                 elif action == "uncomment":
@@ -233,7 +284,7 @@ def process_files(target_dir, vanilla_keys, action):
                         new_lines.append(new_line)
                         modified = True
                         total_modified += 1
-                        print(f"[РАСКОММЕНТИРОВАНИЕ] {rel_path} -> [{current_section}] {key}={val}")
+                        print(f"[UNCOMMENTED] {rel_path} -> [{current_section}] {key}={val}")
                     else:
                         new_lines.append(line)
             else:
@@ -244,7 +295,7 @@ def process_files(target_dir, vanilla_keys, action):
                 with open(filepath, 'w', encoding='utf-8-sig') as f:
                     f.writelines(new_lines)
             except Exception as e:
-                print(f"Ошибка при записи {rel_path}: {e}")
+                print(f"Error writing {rel_path}: {e}")
 
     return total_duplicates, total_modified
 
@@ -259,54 +310,54 @@ def main_menu(current_mod_dir, vanilla_keys, modules_found, lang="ru"):
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print("==================================================================")
-        print("     Factorio Locale Duplicates Manager (Steam 2.1+ Edition)      ")
+        print("     Factorio Locale Duplicates Manager (Factorio 2.1+ Edition)   ")
         print("==================================================================")
-        print(f"  Источник ванили: {STEAM_DATA_DIR}")
-        print(f"  Модули Factorio: {', '.join(modules_found) if modules_found else 'НЕ НАЙДЕНЫ!'}")
-        print(f"  Уникальных ванильных ключей ({lang}): {len(vanilla_keys)}")
-        print(f"  Целевая папка мода: {target_dir}")
+        print(f"  Vanilla Source: {STEAM_DATA_DIR}")
+        print(f"  Factorio Modules: {', '.join(modules_found) if modules_found else 'NOT FOUND!'}")
+        print(f"  Unique Vanilla Keys ({lang}): {len(vanilla_keys)}")
+        print(f"  Target Mod Folder: {target_dir}")
         print("==================================================================")
         print()
-        print("  1. Показать список текущих дубликатов")
-        print("  2. Закомментировать все дубликаты ванили (#)")
-        print("  3. Раскомментировать все дубликаты ванили (восстановить)")
-        print("  4. Сменить путь к целевой папке мода")
-        print("  5. Выйти")
+        print("  1. List current duplicate keys")
+        print("  2. Comment out all vanilla duplicates (#)")
+        print("  3. Uncomment all vanilla duplicates (restore)")
+        print("  4. Change target mod directory")
+        print("  5. Exit")
         print()
         try:
-            choice = input("Выберите действие (1-5): ").strip()
+            choice = input("Select an option (1-5): ").strip()
         except (KeyboardInterrupt, EOFError):
             break
 
         if choice == "1":
-            print("\n--- Список дубликатов ---")
+            print("\n--- Duplicate Keys List ---")
             total_dup, _ = process_files(target_dir, vanilla_keys, "status")
-            print(f"\nВсего найдено дубликатов: {total_dup}")
-            input("\nНажмите Enter для продолжения...")
+            print(f"\nTotal duplicates found: {total_dup}")
+            input("\nPress Enter to continue...")
         elif choice == "2":
-            print("\n--- Закомментирование дубликатов ---")
+            print("\n--- Commenting Duplicates ---")
             total_dup, modified = process_files(target_dir, vanilla_keys, "comment")
-            print(f"\nДействие завершено. Изменено строк: {modified} (из {total_dup} дубликатов)")
-            input("\nНажмите Enter для продолжения...")
+            print(f"\nCompleted. Lines modified: {modified} (out of {total_dup} duplicates)")
+            input("\nPress Enter to continue...")
         elif choice == "3":
-            print("\n--- Раскомментирование дубликатов ---")
+            print("\n--- Uncommenting Duplicates ---")
             total_dup, modified = process_files(target_dir, vanilla_keys, "uncomment")
-            print(f"\nДействие завершено. Изменено строк: {modified} (из {total_dup} дубликатов)")
-            input("\nНажмите Enter для продолжения...")
+            print(f"\nCompleted. Lines modified: {modified} (out of {total_dup} duplicates)")
+            input("\nPress Enter to continue...")
         elif choice == "4":
-            new_path = input("\nВведите новый путь к папке мода: ").strip()
+            new_path = input("\nEnter new target mod directory path: ").strip()
             if new_path:
                 resolved = resolve_target_dir(new_path, lang)
                 if os.path.exists(resolved):
                     target_dir = resolved
-                    print(f"Путь обновлен: {target_dir}")
+                    print(f"Path updated: {target_dir}")
                 else:
-                    print(f"Ошибка: путь не существует ({resolved})")
-            input("\nНажмите Enter для продолжения...")
+                    print(f"Error: Path does not exist ({resolved})")
+            input("\nPress Enter to continue...")
         elif choice == "5":
             break
         else:
-            print("Неверный выбор, попробуйте еще раз.")
+            print("Invalid selection, please try again.")
             import time
             time.sleep(1)
 
@@ -314,7 +365,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Factorio Locale Duplicates Manager")
     parser.add_argument("path", nargs="?", default=None, help="Target mod folder or locale folder")
     parser.add_argument("--action", choices=["status", "comment", "uncomment"], default=None, help="Action to execute without menu")
-    parser.add_argument("--lang", default="ru", help="Language code (default: ru)")
+    parser.add_argument("--lang", default=CONFIG.get("targetLang", "ru"), help="Language code (default from config or ru)")
     parser.add_argument("--factorio-data", default=None, help="Path to Factorio data directory")
 
     args = parser.parse_args()
@@ -322,10 +373,10 @@ if __name__ == "__main__":
     data_dir = args.factorio_data or STEAM_DATA_DIR
     target_lang = args.lang
 
-    print(f"Загрузка ванильных ключей из {data_dir}...")
+    print(f"Loading vanilla keys from {data_dir}...")
     vanilla_keys, modules_found = load_vanilla_keys(data_dir, target_lang)
 
-    target_path = DEFAULT_MOD_LOCALE_DIR
+    target_path = get_default_mod_locale_dir(target_lang)
     if args.path:
         target_path = resolve_target_dir(args.path, target_lang)
 
@@ -335,6 +386,6 @@ if __name__ == "__main__":
             sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
             sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
         total_dup, modified = process_files(target_path, vanilla_keys, args.action)
-        print(f"Действие '{args.action}' выполнено. Найдено дубликатов: {total_dup}, изменено: {modified}")
+        print(f"Action '{args.action}' completed. Duplicates found: {total_dup}, modified: {modified}")
     else:
         main_menu(target_path, vanilla_keys, modules_found, target_lang)

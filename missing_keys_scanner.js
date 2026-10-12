@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { readZipEntries } from './zip_reader.js';
+import { normalizeSectionName } from './syntax_validator.js';
+import { loadConfig, getDefaultModsDir } from './config_loader.js';
+
+export { normalizeSectionName, getDefaultModsDir };
 
 const SYSTEM_MODULES = new Set([
     'base',
@@ -14,10 +18,14 @@ const SYSTEM_MODULES = new Set([
 
 /**
  * Parses Factorio .cfg INI-like content into an object of sections and key-value pairs.
+ * Normalizes misplaced section names by default (e.g. [remnant-name] -> [entity-name]).
  * @param {string} content
+ * @param {object} [options]
+ * @param {boolean} [options.normalize=true] - Whether to normalize section names to canonical Factorio sections.
  * @returns {Record<string, Record<string, string>>}
  */
-export function parseCfgText(content) {
+export function parseCfgText(content, options = {}) {
+    const normalize = options.normalize !== false;
     const sections = {};
     let currentSection = '';
     const lines = content.split(/\r?\n/);
@@ -27,7 +35,8 @@ export function parseCfgText(content) {
         if (!line || line.startsWith('#') || line.startsWith(';')) continue;
 
         if (line.startsWith('[') && line.endsWith(']')) {
-            currentSection = line.slice(1, -1).trim();
+            const rawSec = line.slice(1, -1).trim();
+            currentSection = normalize ? normalizeSectionName(rawSec) : rawSec;
             if (!sections[currentSection]) sections[currentSection] = {};
             continue;
         }
@@ -67,92 +76,127 @@ export function formatCfgSections(sections) {
 
 /**
  * Merges missing keys into an existing .cfg string, preserving comments, blank lines,
- * and existing translations. Appends missing keys under their respective [sections]
- * or appends new sections at the end of the file.
+ * and existing translations.
+ * Strictly deduplicates section headers: each section is output exactly once,
+ * consolidating multiple duplicate headers (preventing Factorio 2.1 ROOT crash).
+ * Normalizes misplaced sections to canonical ones.
  *
  * @param {string} existingContent
  * @param {Record<string, Record<string, string>>} missingSections
  * @returns {string}
  */
 export function mergeMissingKeysIntoCfg(existingContent, missingSections) {
+    // Normalize missingSections
+    const normalizedMissing = {};
+    for (const [rawSec, keys] of Object.entries(missingSections || {})) {
+        if (!keys || Object.keys(keys).length === 0) continue;
+        const normSec = normalizeSectionName(rawSec);
+        if (!normalizedMissing[normSec]) normalizedMissing[normSec] = {};
+        Object.assign(normalizedMissing[normSec], keys);
+    }
+
     if (!existingContent || !existingContent.trim()) {
-        return formatCfgSections(missingSections) + '\n';
+        return formatCfgSections(normalizedMissing) + '\n';
     }
 
     const hasCRLF = existingContent.includes('\r\n');
     const nl = hasCRLF ? '\r\n' : '\n';
     const lines = existingContent.split(/\r?\n/);
 
-    // Identify sections and their ranges [startLine, endLine]
-    const sections = [];
-    let curSec = null;
+    // Group existing content by normalized section while preserving header lines before first section
+    const headerLines = [];
+    const sectionOrder = []; // ordered list of unique normalized section names
+    const sectionLines = new Map(); // normSec -> array of raw lines inside section
+    const existingKeysBySection = new Map(); // normSec -> Set of keys already translated
+
+    let curSection = null;
 
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (line.startsWith('[') && line.endsWith(']')) {
-            if (curSec) {
-                curSec.endLine = i - 1;
+        const rawLine = lines[i];
+        const trimmed = rawLine.trim();
+
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            const rawSec = trimmed.slice(1, -1).trim();
+            if (!rawSec) continue; // Skip empty section header []
+            const normSec = normalizeSectionName(rawSec);
+
+            curSection = normSec;
+            if (!sectionLines.has(normSec)) {
+                sectionOrder.push(normSec);
+                sectionLines.set(normSec, []);
+                existingKeysBySection.set(normSec, new Set());
             }
-            curSec = {
-                name: line.slice(1, -1).trim(),
-                headerLine: i,
-                endLine: lines.length - 1
-            };
-            sections.push(curSec);
+            continue;
         }
-    }
-    if (curSec) {
-        curSec.endLine = lines.length - 1;
+
+        if (!curSection) {
+            headerLines.push(rawLine);
+            continue;
+        }
+
+        // Inside a section
+        if (trimmed.includes('=') && !trimmed.startsWith('#') && !trimmed.startsWith(';')) {
+            const eqIdx = trimmed.indexOf('=');
+            const key = trimmed.slice(0, eqIdx).trim();
+            if (key) {
+                existingKeysBySection.get(curSection).add(key);
+            }
+        }
+        sectionLines.get(curSection).push(rawLine);
     }
 
-    const sectionMap = new Map();
-    for (const s of sections) {
-        sectionMap.set(s.name, s);
-    }
-
-    const insertionsAfterLine = new Map();
-    const newSectionsToAppend = [];
-
-    for (const [secName, keys] of Object.entries(missingSections)) {
+    // Append missing keys under their respective sections
+    for (const [secName, keys] of Object.entries(normalizedMissing)) {
         if (!keys || Object.keys(keys).length === 0) continue;
-        const keyLines = Object.entries(keys).map(([k, v]) => `${k}=${v}`);
 
-        if (sectionMap.has(secName)) {
-            const sec = sectionMap.get(secName);
-            let insertLine = sec.headerLine;
-            for (let j = sec.endLine; j >= sec.headerLine; j--) {
-                if (lines[j].trim().length > 0) {
-                    insertLine = j;
-                    break;
-                }
+        if (!sectionLines.has(secName)) {
+            sectionOrder.push(secName);
+            sectionLines.set(secName, []);
+            existingKeysBySection.set(secName, new Set());
+        }
+
+        const existingKeys = existingKeysBySection.get(secName);
+        const sLines = sectionLines.get(secName);
+
+        for (const [k, v] of Object.entries(keys)) {
+            if (!existingKeys.has(k)) {
+                sLines.push(`${k}=${v}`);
+                existingKeys.add(k);
             }
-            if (!insertionsAfterLine.has(insertLine)) {
-                insertionsAfterLine.set(insertLine, []);
-            }
-            insertionsAfterLine.get(insertLine).push(...keyLines);
-        } else {
-            newSectionsToAppend.push({ name: secName, keyLines });
         }
     }
 
-    const resultLines = [];
-    for (let i = 0; i < lines.length; i++) {
-        resultLines.push(lines[i]);
-        if (insertionsAfterLine.has(i)) {
-            resultLines.push(...insertionsAfterLine.get(i));
+    // Construct final output
+    const outLines = [];
+    if (headerLines.length > 0) {
+        outLines.push(...headerLines);
+        if (outLines.length > 0 && outLines[outLines.length - 1].trim().length > 0) {
+            outLines.push('');
         }
     }
 
-    for (const ns of newSectionsToAppend) {
-        if (resultLines.length > 0 && resultLines[resultLines.length - 1].trim().length > 0) {
-            resultLines.push('');
+    for (const secName of sectionOrder) {
+        const sLines = sectionLines.get(secName);
+        if (!sLines) continue;
+
+        // Ensure single blank line before section header if needed
+        if (outLines.length > 0 && outLines[outLines.length - 1].trim().length > 0) {
+            outLines.push('');
         }
-        resultLines.push(`[${ns.name}]`);
-        resultLines.push(...ns.keyLines);
-        resultLines.push('');
+
+        // Output exactly ONE section header per section
+        outLines.push(`[${secName}]`);
+
+        for (const line of sLines) {
+            outLines.push(line);
+        }
     }
 
-    return resultLines.join(nl).replace(/(\r?\n)+$/, '') + nl;
+    let out = outLines.join(nl);
+    if (!out.endsWith(nl)) {
+        out += nl;
+    }
+    return out;
 }
 
 /**
@@ -184,29 +228,22 @@ export function parseModEntry(entryName) {
 }
 
 /**
- * Resolves the default Factorio mods folder in %APPDATA%/Factorio/mods.
- */
-export function getDefaultModsDir() {
-    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    return path.join(appData, 'Factorio', 'mods');
-}
-
-/**
  * Batch scans active Factorio mods from mod-list.json, extracts their original
- * English locale (en/*.cfg), and compares against the target translation mod (e.g. my-texture-pack).
+ * English locale (en/*.cfg), and compares against the target translation mod.
  *
  * @param {object} [options]
  * @param {string} [options.modsDir] - Directory where Factorio mods and mod-list.json reside.
- * @param {string} [options.targetMod] - Name of the translation pack mod (default: 'my-texture-pack').
- * @param {string} [options.lang] - Target language to compare (default: 'ru').
+ * @param {string} [options.targetMod] - Name of the translation pack mod (default from config).
+ * @param {string} [options.lang] - Target language to compare (default from config).
  * @param {string} [options.modFilter] - Optional filter for a specific mod name.
  * @param {string} [options.writeDir] - Optional folder where diff .cfg files should be written.
  * @returns {object} Diff results structure.
  */
 export function scanMissingKeys(options = {}) {
-    const modsDir = options.modsDir || getDefaultModsDir();
-    const targetMod = options.targetMod || 'my-texture-pack';
-    const lang = options.lang || 'ru';
+    const config = loadConfig();
+    const modsDir = options.modsDir || config.modsDir;
+    const targetMod = options.targetMod || config.targetMod;
+    const lang = options.lang || config.targetLang;
     const modFilter = options.modFilter ? options.modFilter.trim().toLowerCase() : null;
     const writeDir = options.writeDir ? path.resolve(options.writeDir) : null;
 

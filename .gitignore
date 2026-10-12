@@ -7,10 +7,19 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and build outputs
 node_modules
 dist
 dist-ssr
 *.local
+build.zip
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Local user configuration
+config.json
 
 # Editor directories and files
 .vscode/*

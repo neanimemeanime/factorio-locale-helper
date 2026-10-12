@@ -29,7 +29,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('analyzer');
                         }}
                     >
-                        Анализ мода
+                        Mod Analyzer
                     </a>
                 </li>
                 <li role="presentation">
@@ -43,7 +43,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('missing');
                         }}
                     >
-                        Недостающие ключи
+                        Missing Keys
                         {missingKeysCount > 0 && (
                             <span className="badge" style={{ marginLeft: '8px' }}>
                                 {missingKeysCount}
@@ -62,7 +62,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('audit');
                         }}
                     >
-                        Аудит качества
+                        Quality Audit
                         {auditIssuesCount > 0 && (
                             <span className="badge" style={{ marginLeft: '8px' }}>
                                 {auditIssuesCount}

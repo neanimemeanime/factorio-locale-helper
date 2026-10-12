@@ -68,7 +68,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
 
     const analyzeZipFile = useCallback(async (file: File) => {
         if (!file.name.endsWith('.zip')) {
-            setError('Пожалуйста, выберите архив .zip с модом.');
+            setError('Please select a mod .zip archive.');
             return;
         }
 
@@ -127,7 +127,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             setUnusedKeysList(result.unusedKeysList);
         } catch (e) {
             console.error(e);
-            setError(`Ошибка при анализе архива: ${(e as Error).message}`);
+            setError(`Error analyzing archive: ${(e as Error).message}`);
         } finally {
             setIsAnalyzing(false);
         }
@@ -194,7 +194,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             setUnusedKeysList(result.unusedKeysList);
         } catch (e) {
             console.error(e);
-            setError(`Ошибка при анализе папки: ${(e as Error).message}`);
+            setError(`Error analyzing folder: ${(e as Error).message}`);
         } finally {
             setIsAnalyzing(false);
         }
@@ -237,7 +237,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                 setError(data.error);
             }
         } catch (e) {
-            setError(`Сканирование пути не удалось: ${(e as Error).message}`);
+            setError(`Path scan failed: ${(e as Error).message}`);
         } finally {
             setIsAnalyzing(false);
         }
@@ -259,12 +259,12 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             });
             const data = await response.json();
             if (data.success) {
-                setSaveStatus(`Успешно сохранено: ${data.filePath}`);
+                setSaveStatus(`Successfully saved: ${data.filePath}`);
             } else {
-                setSaveStatus(`Ошибка сохранения: ${data.error}`);
+                setSaveStatus(`Save error: ${data.error}`);
             }
         } catch (e) {
-            setSaveStatus(`Ошибка сохранения: ${(e as Error).message}`);
+            setSaveStatus(`Save error: ${(e as Error).message}`);
         } finally {
             setIsSaving(false);
             setTimeout(() => setSaveStatus(null), 5000);
@@ -285,7 +285,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
 
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
-    const copyToClipboard = (content: string, label: string = 'Скопировано в буфер обмена') => {
+    const copyToClipboard = (content: string, label: string = 'Copied to clipboard') => {
         navigator.clipboard.writeText(content);
         setCopyStatus(label);
         setTimeout(() => setCopyStatus(null), 3000);
@@ -304,7 +304,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                         />
                         <span className="checkbox"></span>
                         <div style={{ color: '#e0e0e0', fontSize: '0.95rem' }}>
-                            Удалять неиспользуемые ключи из чистого .cfg (Внимание: может удалить динамические ключи)
+                            Remove unused keys from cleaned .cfg (Warning: may remove dynamically constructed keys)
                         </div>
                     </label>
                 </div>
@@ -312,19 +312,19 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                 {isConnected && (
                     <div style={{ borderTop: '1px solid #444444', paddingTop: '1rem', marginTop: '1rem' }}>
                         <h4 style={{ color: '#ffa200', margin: '0 0 0.5rem 0', fontSize: '1rem' }}>
-                            Прямой анализ локальной папки и автосохранение
+                            Direct local folder analysis & autosave
                         </h4>
                         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             <input
                                 type="text"
-                                placeholder={`Например: ${defaultModsDir}\\my-mod`}
+                                placeholder={`e.g.: ${defaultModsDir}\\my-mod`}
                                 value={localModPath}
                                 onChange={(e) => setLocalModPath(e.target.value)}
                                 className="factorio-input"
                                 style={{ flexGrow: 1, minWidth: '240px' }}
                             />
                             <button className="button-orange" onClick={handleLocalScan} disabled={isAnalyzing}>
-                                {isAnalyzing ? 'Сканирование...' : 'Сканировать папку'}
+                                {isAnalyzing ? 'Scanning...' : 'Scan Folder'}
                             </button>
                         </div>
                     </div>
@@ -364,14 +364,14 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                         <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                 </div>
-                <h2>Перетащите .zip архив мода сюда</h2>
-                <p style={{ margin: '0.4rem 0 1rem 0' }}>или выберите источник вручную</p>
+                <h2>Drag & drop mod .zip archive here</h2>
+                <p style={{ margin: '0.4rem 0 1rem 0' }}>or choose source manually</p>
                 <div className="button-group" style={{ justifyContent: 'center' }}>
                     <button className="button" onClick={() => fileInputRef.current?.click()}>
-                        Выбрать .zip файл
+                        Select .zip file
                     </button>
                     <button className="button" onClick={() => folderInputRef.current?.click()}>
-                        Выбрать распакованную папку
+                        Select unpacked folder
                     </button>
                 </div>
             </div>
@@ -390,7 +390,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             )}
 
             {saveStatus && (
-                <div className={`panel alert ${saveStatus.startsWith('Ошибка') ? 'alert-error' : 'alert-success'}`} style={{ textAlign: 'center', padding: '0.75rem' }}>
+                <div className={`panel alert ${saveStatus.toLowerCase().includes('error') ? 'alert-error' : 'alert-success'}`} style={{ textAlign: 'center', padding: '0.75rem' }}>
                     {saveStatus}
                 </div>
             )}
@@ -406,43 +406,43 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                 <div className="results-container">
                     <div className="column panel">
                         <div className="column-header">
-                            <h3>Исходный .cfg мода</h3>
+                            <h3>Source Mod .cfg</h3>
                             <div className="button-group">
-                                <button className="button button-sm" onClick={() => copyToClipboard(generatedCfg)}>Копировать</button>
-                                <button className="button-green button-sm" onClick={() => downloadFile(generatedCfg, `${modName}.source.cfg`)}>Скачать</button>
+                                <button className="button button-sm" onClick={() => copyToClipboard(generatedCfg)}>Copy</button>
+                                <button className="button-green button-sm" onClick={() => downloadFile(generatedCfg, `${modName}.source.cfg`)}>Download</button>
                             </div>
                         </div>
                         <textarea className="panel-inset factorio-textarea" value={generatedCfg} readOnly></textarea>
                     </div>
                     <div className="column panel">
                         <div className="column-header">
-                            <h3>Очищенный .cfg (Только мод)</h3>
+                            <h3>Cleaned .cfg (Mod Only)</h3>
                             <div className="button-group">
-                                <button className="button button-sm" onClick={() => copyToClipboard(cleanedCfg)}>Копировать</button>
-                                <button className="button-green button-sm" onClick={() => downloadFile(cleanedCfg, `${modName}.cfg`)}>Скачать</button>
+                                <button className="button button-sm" onClick={() => copyToClipboard(cleanedCfg)}>Copy</button>
+                                <button className="button-green button-sm" onClick={() => downloadFile(cleanedCfg, `${modName}.cfg`)}>Download</button>
                                 {isConnected && localModPath && (
                                     <button
                                         className="button-orange button-sm"
                                         onClick={handleLocalSave}
                                         disabled={isSaving}
                                     >
-                                        {isSaving ? 'Сохранение...' : 'Сохранить в папку'}
+                                        {isSaving ? 'Saving...' : 'Save to Folder'}
                                     </button>
                                 )}
                             </div>
                         </div>
                         <textarea className="panel-inset factorio-textarea" value={cleanedCfg} readOnly></textarea>
                         <div className="log-container panel-inset">
-                            <h4>Журнал анализа (Удаленные ванильные ключи)</h4>
+                            <h4>Analysis Log (Removed Vanilla Keys)</h4>
                             <p>{analysisLog}</p>
                         </div>
                         <div className="log-actions">
                             <button className="button button-sm" onClick={() => downloadFile(removedKeysCfg, `${modName}.vanilla_keys.cfg`)}>
-                                Скачать удаленные ванильные ключи
+                                Download Removed Vanilla Keys
                             </button>
                             {unusedKeysCfg && unusedKeysCfg.length > 150 && (
                                 <button className="button-red button-sm" onClick={() => downloadFile(unusedKeysCfg, `${modName}.unused_keys.cfg`)}>
-                                    Скачать неиспользуемые ключи
+                                    Download Unused Keys
                                 </button>
                             )}
                         </div>
@@ -454,21 +454,21 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {hardcodedIssues.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Захардкоженные и нелокализуемые строки</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Hardcoded & Untranslatable Strings</h3>
                         <span className="badge badge-warning">{hardcodedIssues.length}</span>
                     </div>
                     <p style={{ margin: '0 0 1rem 0', color: '#aaaaaa', fontSize: '0.95rem' }}>
-                        Эти строки найдены в Lua-скриптах и могут требовать добавления в локализацию.
+                        These strings were detected in Lua scripts and may require localization keys.
                     </p>
                     <div className="table-container panel-inset" style={{ maxHeight: '420px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '22%' }}>Файл</th>
-                                    <th style={{ width: '8%', textAlign: 'center' }}>Строка</th>
-                                    <th style={{ width: '15%', textAlign: 'center' }}>Тип</th>
-                                    <th style={{ width: '25%' }}>Код</th>
-                                    <th>Описание</th>
+                                    <th style={{ width: '22%' }}>File</th>
+                                    <th style={{ width: '8%', textAlign: 'center' }}>Line</th>
+                                    <th style={{ width: '15%', textAlign: 'center' }}>Type</th>
+                                    <th style={{ width: '25%' }}>Code</th>
+                                    <th>Description</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -497,15 +497,15 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {removedVanillaKeys.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Найденные ванильные ключи</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Vanilla Keys Found</h3>
                         <span className="badge badge-info">{removedVanillaKeys.length}</span>
                     </div>
                     <div className="table-container panel-inset" style={{ maxHeight: '320px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '35%' }}>Секция</th>
-                                    <th>Ключ</th>
+                                    <th style={{ width: '35%' }}>Section</th>
+                                    <th>Key</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -529,15 +529,15 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {unusedKeysList.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Неиспользуемые ключи</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Unused Keys</h3>
                         <span className="badge badge-error">{unusedKeysList.length}</span>
                     </div>
                     <div className="table-container panel-inset" style={{ maxHeight: '320px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '35%' }}>Секция</th>
-                                    <th>Ключ</th>
+                                    <th style={{ width: '35%' }}>Section</th>
+                                    <th>Key</th>
                                 </tr>
                             </thead>
                             <tbody>

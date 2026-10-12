@@ -6,8 +6,9 @@ import readline from 'readline';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { analyzeModCore } from './analyzer.js';
-import { scanMissingKeys, getDefaultModsDir } from './missing_keys_scanner.js';
+import { scanMissingKeys } from './missing_keys_scanner.js';
 import { auditLocaleQuality } from './locale_quality_auditor.js';
+import { loadConfig, getDefaultModsDir } from './config_loader.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,47 +23,68 @@ const prototypesText = fs.existsSync(prototypesPath) ? fs.readFileSync(prototype
 const vanillaNames = new Set(vanillaNamesText.split(/\r?\n/).filter(Boolean));
 const prototypesDb = new Set(prototypesText.split(/\r?\n/).filter(Boolean));
 
-// Recursively reads files from a directory and formats them for analyzeModCore.
-// Supports automatic zip extraction.
-function readModDir(modPath) {
-    let tempDirToDelete = null;
-    let targetModPath = modPath;
+import { readZipEntries } from './zip_reader.js';
+import { validateLocaleSyntax, fixLocaleSyntax, normalizeSectionName } from './syntax_validator.js';
+import { loadVanillaLocaleData } from './vanilla_loader.js';
+
+let steamVanillaData = null;
+export function getVanillaData(lang = 'en') {
+    if (!steamVanillaData || steamVanillaData.lang !== lang) {
+        const loaded = loadVanillaLocaleData(null, lang);
+        steamVanillaData = { ...loaded, lang };
+        if (loaded.compositeKeys && loaded.compositeKeys.size > 0) {
+            console.log(`[vanilla_loader] Loaded ${loaded.compositeKeys.size} live vanilla keys from Factorio data (${loaded.modulesFound.join(', ')})`);
+        }
+    }
+    return steamVanillaData;
+}
+
+// Recursively reads files from a directory or in-memory from a .zip archive and formats them for analyzeModCore.
+export function readModDir(modPath) {
+    if (!fs.existsSync(modPath)) {
+        throw new Error(`Path does not exist: ${modPath}`);
+    }
 
     if (modPath.endsWith('.zip')) {
-        const tempDir = path.join(os.tmpdir(), '.temp_unzip_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
-        fs.mkdirSync(tempDir, { recursive: true });
-        tempDirToDelete = tempDir;
+        let info = {};
+        const luaFiles = [];
+        const localeFiles = {};
 
-        try {
-            const escapePath = (p) => p.replace(/'/g, "''");
-            const cmd = `powershell -NoProfile -Command "Expand-Archive -Force -Path '${escapePath(modPath)}' -DestinationPath '${escapePath(tempDir)}'"`;
-            execSync(cmd, { stdio: 'ignore' });
-        } catch (err) {
-            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
-            throw new Error(`Failed to unzip file: ${err.message}`);
+        const entries = readZipEntries(modPath, (name) => {
+            const norm = name.replace(/\\/g, '/');
+            return norm.endsWith('info.json') || norm.endsWith('.lua') || (norm.includes('/locale/') && norm.endsWith('.cfg'));
+        });
+
+        for (const entry of entries) {
+            const normPath = entry.name.replace(/\\/g, '/');
+            // Remove top-level archive directory if present (e.g. "my-mod_1.0.0/info.json" -> "info.json")
+            const parts = normPath.split('/');
+            const relPath = parts.length > 1 ? parts.slice(1).join('/') : parts[0];
+
+            if (relPath === 'info.json') {
+                try {
+                    info = JSON.parse(entry.content);
+                } catch (err) {
+                    console.error(`Error parsing info.json in zip ${modPath}:`, err);
+                }
+            } else if (normPath.endsWith('.lua')) {
+                luaFiles.push({ path: relPath, content: entry.content });
+            } else if (normPath.includes('/locale/') && normPath.endsWith('.cfg')) {
+                const langMatch = normPath.match(/\/locale\/([a-zA-Z-]+)\//);
+                if (langMatch && langMatch[1]) {
+                    const lang = langMatch[1];
+                    if (!localeFiles[lang]) localeFiles[lang] = [];
+                    localeFiles[lang].push(entry.content);
+                }
+            }
         }
 
-        const entries = fs.readdirSync(tempDir, { withFileTypes: true });
-        const dirEntry = entries.find(e => e.isDirectory());
-        if (dirEntry) {
-            targetModPath = path.join(tempDir, dirEntry.name);
-        } else {
-            targetModPath = tempDir;
-        }
+        return { info, luaFiles, localeFiles };
     }
 
-    if (!fs.existsSync(targetModPath)) {
-        if (tempDirToDelete) {
-            try { fs.rmSync(tempDirToDelete, { recursive: true, force: true }); } catch (_) {}
-        }
-        throw new Error(`Path does not exist: ${targetModPath}`);
-    }
-    const stat = fs.statSync(targetModPath);
+    const stat = fs.statSync(modPath);
     if (!stat.isDirectory()) {
-        if (tempDirToDelete) {
-            try { fs.rmSync(tempDirToDelete, { recursive: true, force: true }); } catch (_) {}
-        }
-        throw new Error(`Path is not a directory: ${targetModPath}`);
+        throw new Error(`Path is not a directory: ${modPath}`);
     }
 
     const allFiles = [];
@@ -79,14 +101,14 @@ function readModDir(modPath) {
             }
         }
     }
-    walk(targetModPath);
+    walk(modPath);
 
     let info = {};
     const luaFiles = [];
     const localeFiles = {};
 
     for (const filePath of allFiles) {
-        const relPath = path.relative(targetModPath, filePath).replace(/\\/g, '/');
+        const relPath = path.relative(modPath, filePath).replace(/\\/g, '/');
         
         if (relPath === 'info.json') {
             try {
@@ -108,16 +130,83 @@ function readModDir(modPath) {
         }
     }
 
-    // Clean up temporary unzipped folder if one was created
-    if (tempDirToDelete) {
-        try {
-            fs.rmSync(tempDirToDelete, { recursive: true, force: true });
-        } catch (err) {
-            console.error(`Error deleting temp folder ${tempDirToDelete}:`, err);
-        }
+    return { info, luaFiles, localeFiles };
+}
+
+/**
+ * Validates syntax of .cfg files in a directory or file.
+ * Optionally repairs them in place when fix=true.
+ */
+export function runSyntaxValidation(targetPath, fix = false) {
+    const config = loadConfig();
+    let resolved = targetPath;
+    if (!resolved) {
+        resolved = config.targetLocaleDir;
     }
 
-    return { info, luaFiles, localeFiles };
+    if (!fs.existsSync(resolved)) {
+        throw new Error(`Path does not exist: ${resolved}`);
+    }
+
+    const filesToValidate = [];
+    const stat = fs.statSync(resolved);
+    if (stat.isFile()) {
+        if (resolved.endsWith('.cfg')) {
+            filesToValidate.push(resolved);
+        }
+    } else {
+        function scanDir(dir) {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const e of entries) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) {
+                    scanDir(full);
+                } else if (e.name.endsWith('.cfg')) {
+                    filesToValidate.push(full);
+                }
+            }
+        }
+        scanDir(resolved);
+    }
+
+    const results = [];
+    let totalErrors = 0;
+    let fixedFilesCount = 0;
+
+    for (const filePath of filesToValidate) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const validation = validateLocaleSyntax(content, { filePath });
+
+        let fixed = false;
+        if (!validation.valid && fix) {
+            const repaired = fixLocaleSyntax(content);
+            fs.writeFileSync(filePath, repaired, 'utf-8');
+            fixed = true;
+            fixedFilesCount++;
+        }
+
+        if (!validation.valid) {
+            totalErrors += validation.errors.length;
+        }
+
+        results.push({
+            file: filePath,
+            valid: validation.valid,
+            errorCount: validation.errors.length,
+            errors: validation.errors,
+            fixed
+        });
+    }
+
+    return {
+        path: resolved,
+        totalFilesScanned: filesToValidate.length,
+        totalErrorsFound: totalErrors,
+        filesWithErrors: results.filter(r => !r.valid).length,
+        fixed: fix,
+        fixedFilesCount,
+        files: results
+    };
 }
 
 // -------------------------------------------------------------
@@ -127,12 +216,14 @@ function runCli(modPath, write, lang, removeUnused, outputPath) {
     try {
         console.log(`Scanning mod folder: ${modPath}`);
         const data = readModDir(modPath);
+        const vData = getVanillaData(lang || 'en');
         const result = analyzeModCore({
             info: data.info,
             luaFiles: data.luaFiles,
             localeFiles: data.localeFiles,
             prototypesDb,
             vanillaNames,
+            vanillaCompositeKeys: vData.compositeKeys,
             removeUnusedKeys: removeUnused
         });
 
@@ -212,18 +303,21 @@ function startServer(port = 3001) {
                     const params = JSON.parse(body);
                     const modPath = params.path;
                     const removeUnused = !!params.removeUnused;
+                    const lang = params.lang || 'en';
 
                     if (!modPath) {
                         throw new Error('path parameter is required');
                     }
 
                     const data = readModDir(modPath);
+                    const vData = getVanillaData(lang);
                     const result = analyzeModCore({
                         info: data.info,
                         luaFiles: data.luaFiles,
                         localeFiles: data.localeFiles,
                         prototypesDb,
                         vanillaNames,
+                        vanillaCompositeKeys: vData.compositeKeys,
                         removeUnusedKeys: removeUnused
                     });
 
@@ -279,15 +373,14 @@ function startServer(port = 3001) {
         }
 
         if (req.method === 'GET' && urlObj.pathname === '/api/defaults') {
-            const defModsDir = getDefaultModsDir();
-            const defTargetMod = 'my-texture-pack';
-            const defTargetLocale = path.join(defModsDir, defTargetMod, 'locale', 'ru');
+            const config = loadConfig();
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
-                modsDir: defModsDir,
-                targetMod: defTargetMod,
-                targetLocaleDir: defTargetLocale,
-                targetLangs: ['ru', 'en', 'de', 'fr', 'es', 'zh-CN']
+                modsDir: config.modsDir,
+                targetMod: config.targetMod,
+                targetLocaleDir: config.targetLocaleDir,
+                targetLang: config.targetLang,
+                targetLangs: ['en', 'ru', 'de', 'fr', 'es', 'zh-CN', 'ja', 'pl', 'uk']
             }));
             return;
         }
@@ -352,6 +445,23 @@ function startServer(port = 3001) {
                         modFilter: params.modName || params.modFilter,
                         writeToTarget: true
                     });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, result }));
+                } catch (err) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
+        if (req.method === 'POST' && urlObj.pathname === '/api/validate-syntax') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const params = JSON.parse(body || '{}');
+                    const result = runSyntaxValidation(params.path, !!params.fix);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, result }));
                 } catch (err) {
@@ -501,23 +611,21 @@ function handleMcpRequest(req) {
                 },
                 {
                     name: "scan_missing_keys",
-                    description: "Batch scan active Factorio mods from mod-list.json, parse original English locales (locale/en/*.cfg) from folders and .zip archives, compare against target translation mod (my-texture-pack/locale/ru), and return missing keys diff.",
+                    description: "Batch scan active Factorio mods from mod-list.json, parse original English locales (locale/en/*.cfg) from folders and .zip archives, compare against target translation mod, and return missing keys diff.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             modsDir: {
                                 type: "string",
-                                description: "Path to Factorio mods directory containing mod-list.json (default: %APPDATA%/Factorio/mods)"
+                                description: "Path to Factorio mods directory containing mod-list.json (default: from config or %APPDATA%/Factorio/mods)"
                             },
                             targetMod: {
                                 type: "string",
-                                default: "my-texture-pack",
-                                description: "Target localization mod name (default: 'my-texture-pack')"
+                                description: "Target localization mod name (default: from config or auto-detected)"
                             },
                             lang: {
                                 type: "string",
-                                default: "ru",
-                                description: "Language code to compare against (default: 'ru')"
+                                description: "Language code to compare against (default: from config or 'ru')"
                             },
                             modFilter: {
                                 type: "string",
@@ -537,17 +645,17 @@ function handleMcpRequest(req) {
                 },
                 {
                     name: "audit_locale_quality",
-                    description: "Audit Russian localization files for tag/placeholder mismatches against original English (missing [color=green][/color], __2__, etc.), foreign characters (en, jp, cn, etc.), mixed language strings ('wooden бочка'), and untranslated text.",
+                    description: "Audit localization files for tag/placeholder mismatches against original English (missing [color=green][/color], __2__, etc.), foreign characters (en, jp, cn, etc.), mixed language strings, and untranslated text.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             targetPath: {
                                 type: "string",
-                                description: "Path to the locale folder to audit (default: %APPDATA%/Factorio/mods/my-texture-pack/locale/ru)"
+                                description: "Path to the locale folder to audit (default: target locale folder from config)"
                             },
                             modsDir: {
                                 type: "string",
-                                description: "Path to Factorio mods folder containing original mod zips/folders with locale/en (default: %APPDATA%/Factorio/mods)"
+                                description: "Path to Factorio mods folder containing original mod zips/folders with locale/en (default: from config)"
                             },
                             modFilter: {
                                 type: "string",
@@ -557,12 +665,30 @@ function handleMcpRequest(req) {
                                 type: "string",
                                 enum: ["all", "tags", "foreign", "mixed", "untranslated"],
                                 default: "all",
-                                description: "Filter by issue type: 'all', 'tags' (missing tags/placeholders), 'foreign' (non-Russian characters like cn, jp, en), 'mixed' (mixed latin/cyrillic), or 'untranslated' (pure English text)"
+                                description: "Filter by issue type: 'all', 'tags' (missing tags/placeholders), 'foreign' (non-target characters like cn, jp, en), 'mixed' (mixed scripts), or 'untranslated' (pure source language text)"
                             },
                             limit: {
                                 type: "number",
                                 default: 100,
                                 description: "Maximum number of issues to return (default: 100, 0 for unlimited)"
+                            }
+                        }
+                    }
+                },
+                {
+                    name: "validate_locale_syntax",
+                    description: "Validate Factorio .cfg locale files for syntax errors: non-canonical / misplaced sections (e.g. [corpse-name], [unit-name]), duplicate section headers (causes Factorio 2.1 fatal crash: Duplicate key in property tree at ROOT), orphan keys before the first section, empty sections [], and lines without '='. Supports 'fix' option to automatically migrate misplaced sections to canonical ones and repair syntax errors.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            path: {
+                                type: "string",
+                                description: "Path to a .cfg file or directory of .cfg files to validate (default: target locale folder from config)"
+                            },
+                            fix: {
+                                type: "boolean",
+                                default: false,
+                                description: "Whether to automatically migrate misplaced sections to canonical ones and repair syntax errors (default: false)"
                             }
                         }
                     }
@@ -587,12 +713,14 @@ function handleMcpRequest(req) {
                 }
 
                 const data = readModDir(modPath);
+                const vData = getVanillaData(lang);
                 const result = analyzeModCore({
                     info: data.info,
                     luaFiles: data.luaFiles,
                     localeFiles: data.localeFiles,
                     prototypesDb,
                     vanillaNames,
+                    vanillaCompositeKeys: vData.compositeKeys,
                     removeUnusedKeys: removeUnused
                 });
 
@@ -762,6 +890,34 @@ function handleMcpRequest(req) {
             return;
         }
 
+        if (name === 'validate_locale_syntax') {
+            try {
+                const targetPath = args?.path;
+                const fix = !!args?.fix;
+                const result = runSyntaxValidation(targetPath, fix);
+
+                sendMcpResponse(id, {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(result, null, 2)
+                        }
+                    ]
+                });
+            } catch (err) {
+                sendMcpResponse(id, {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error validating locale syntax: ${err.message}`
+                        }
+                    ],
+                    isError: true
+                });
+            }
+            return;
+        }
+
         sendMcpError(id, -32601, `Method not found: tools/call/${name}`);
         return;
     }
@@ -792,23 +948,26 @@ function sendMcpError(id, code, message) {
 // -------------------------------------------------------------
 // Main Dispatcher
 // -------------------------------------------------------------
-const args = process.argv.slice(2);
-let mode = 'cli';
-let modPath = '';
-let write = false;
-let lang = '';
-let removeUnused = false;
-let port = 3001;
-let outputPath = '';
-let action = '';
-let modsDir = '';
-let targetMod = 'my-texture-pack';
-let modFilter = '';
-let writeDir = '';
-let issueType = 'all';
-let limit = 100;
-let jsonOutput = false;
-let writeToTarget = true;
+export function main() {
+    const config = loadConfig();
+    const args = process.argv.slice(2);
+    let mode = 'cli';
+    let modPath = '';
+    let write = false;
+    let lang = config.targetLang;
+    let removeUnused = false;
+    let port = 3001;
+    let outputPath = '';
+    let action = '';
+    let modsDir = config.modsDir;
+    let targetMod = config.targetMod;
+    let modFilter = '';
+    let writeDir = '';
+    let issueType = 'all';
+    let limit = 100;
+    let jsonOutput = false;
+    let writeToTarget = true;
+    let fixMode = false;
 
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -824,6 +983,10 @@ for (let i = 0; i < args.length; i++) {
         writeToTarget = false;
     } else if (arg === '--audit' || arg === '--audit-locale') {
         mode = 'audit';
+    } else if (arg === '--validate-syntax' || arg === '--syntax') {
+        mode = 'validate-syntax';
+    } else if (arg === '--fix') {
+        fixMode = true;
     } else if (arg === '--mods-dir') {
         modsDir = args[++i];
     } else if (arg === '--target-mod') {
@@ -860,7 +1023,7 @@ Usage:
   Direct CLI analysis:
     node cli.js --path <absolute_mod_path> [--write] [--lang <lang>] [--remove-unused] [--output-path <path>]
 
-  Batch Missing Keys Diff (mod-list.json vs my-texture-pack):
+  Batch Missing Keys Diff (mod-list.json vs target translation mod):
     node cli.js --scan-missing [--mods-dir <dir>] [--target-mod <name>] [--lang <lang>] [--filter <mod>] [--write-dir <dir>] [--json]
 
   Audit Locale Quality (mixed language / untranslated):
@@ -868,6 +1031,9 @@ Usage:
 
   Duplicate Vanilla Keys Manager (Steam Factorio 2.1+):
     node cli.js --duplicates [--path <path>] [--action status|comment|uncomment] [--lang <lang>]
+
+  Syntax Validation & Hygiene (Factorio 2.1+ standards):
+    node cli.js --validate-syntax [--path <path>] [--fix] [--json]
 
   Local HTTP server mode (default port 3001):
     node cli.js --server [--port <port>]
@@ -878,8 +1044,10 @@ Usage:
 Options:
   --scan-missing      Run batch missing keys diff.
   --audit             Run translation quality audit.
-  --mods-dir <dir>    Path to mods folder containing mod-list.json (default: %APPDATA%/Factorio/mods).
-  --target-mod <name> Target translation mod name (default: my-texture-pack).
+  --validate-syntax   Validate .cfg locale syntax (duplicate sections, misplaced names, empty sections).
+  --fix               Automatically migrate misplaced sections to canonical ones and repair syntax errors.
+  --mods-dir <dir>    Path to mods folder containing mod-list.json (default: from config or %APPDATA%/Factorio/mods).
+  --target-mod <name> Target translation mod name (default: from config or auto-detected).
   --filter <mod>      Filter analysis/diff/audit to a specific mod name.
   --write-dir <dir>   Directory to write missing diff .cfg files.
   --issue-type <type> Issue type for audit: all (default), mixed, untranslated.
@@ -931,7 +1099,7 @@ if (mode === 'server') {
             }
             console.log(`---------------------------------`);
             for (const [mName, mData] of Object.entries(result.mods)) {
-                console.log(`\nMod: ${mName} (${mData.missingCount} missing keys, RU file exists: ${mData.ruFileExists ? 'YES' : 'NO'})`);
+                console.log(`\nMod: ${mName} (${mData.missingCount} missing keys, target locale exists: ${mData.ruFileExists ? 'YES' : 'NO'})`);
                 for (const [sec, keys] of Object.entries(mData.sections)) {
                     console.log(`  [${sec}]`);
                     for (const [k, v] of Object.entries(keys)) {
@@ -948,8 +1116,8 @@ if (mode === 'server') {
     try {
         console.log(`Auditing locale quality (type: ${issueType}, limit: ${limit})...`);
         const result = auditLocaleQuality({
-            targetLocaleDir: modPath || undefined,
-            modsDir: modsDir || undefined,
+            targetLocaleDir: modPath || config.targetLocaleDir,
+            modsDir: modsDir || config.modsDir,
             modFilter: modFilter || undefined,
             issueType,
             limit
@@ -996,9 +1164,49 @@ if (mode === 'server') {
                     console.log(`   Suspicious: ${issue.suspiciousWords.join(', ')}`);
                 }
             }
+
+            try {
+                const syntaxResult = runSyntaxValidation(modPath || result.summary.targetLocaleDir, false);
+                if (syntaxResult.totalErrorsFound > 0) {
+                    console.log(`\n------------------------------------`);
+                    console.log(`Syntax & Hygiene: Found ${syntaxResult.totalErrorsFound} syntax error(s) across ${syntaxResult.filesWithErrors} file(s)!`);
+                    console.log(`Run "node cli.js --validate-syntax --fix" to automatically repair them.`);
+                }
+            } catch (_) {}
         }
     } catch (err) {
         console.error(`Error auditing locale: ${err.message}`);
+        process.exit(1);
+    }
+} else if (mode === 'validate-syntax') {
+    try {
+        console.log(`Validating Factorio locale syntax (path: ${modPath || 'default target'}, fix: ${fixMode ? 'YES' : 'NO'})...`);
+        const result = runSyntaxValidation(modPath, fixMode);
+        if (jsonOutput) {
+            console.log(JSON.stringify(result, null, 2));
+        } else {
+            console.log(`\n=== Locale Syntax Validation Summary ===`);
+            console.log(`Path: ${result.path}`);
+            console.log(`Total files scanned: ${result.totalFilesScanned}`);
+            console.log(`Total syntax errors found: ${result.totalErrorsFound}`);
+            console.log(`Files with errors: ${result.filesWithErrors}`);
+            if (result.fixed) {
+                console.log(`Fixed files count: ${result.fixedFilesCount}`);
+            }
+            console.log(`----------------------------------------`);
+            for (const fileResult of result.files) {
+                if (fileResult.valid) {
+                    console.log(`✓ ${path.basename(fileResult.file)}: VALID`);
+                } else {
+                    console.log(`✗ ${path.basename(fileResult.file)}: ${fileResult.errorCount} error(s) ${fileResult.fixed ? '(FIXED)' : ''}`);
+                    for (const err of fileResult.errors) {
+                        console.log(`   Line ${err.line} [${err.type.toUpperCase()}]: ${err.message}`);
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error(`Error validating locale syntax: ${err.message}`);
         process.exit(1);
     }
 } else if (mode === 'duplicates') {
@@ -1021,3 +1229,10 @@ if (mode === 'server') {
     }
     runCli(modPath, write, lang || 'en', removeUnused, outputPath);
 }
+}
+
+const isMain = process.argv[1] && (path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url)));
+if (isMain) {
+    main();
+}
+
