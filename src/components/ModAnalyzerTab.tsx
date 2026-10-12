@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { analyzeModCore } from '../../analyzer.js';
+import { useI18n } from '../i18n.tsx';
 
 declare const JSZip: any;
 
@@ -24,6 +25,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
     selectedLang,
     prototypesDb
 }) => {
+    const { t } = useI18n();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -304,7 +306,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                         />
                         <span className="checkbox"></span>
                         <div style={{ color: '#e0e0e0', fontSize: '0.95rem' }}>
-                            Remove unused keys from cleaned .cfg (Warning: may remove dynamically constructed keys)
+                            {t('analyzer.removeUnused')}
                         </div>
                     </label>
                 </div>
@@ -312,7 +314,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                 {isConnected && (
                     <div style={{ borderTop: '1px solid #444444', paddingTop: '1rem', marginTop: '1rem' }}>
                         <h4 style={{ color: '#ffa200', margin: '0 0 0.5rem 0', fontSize: '1rem' }}>
-                            Direct local folder analysis & autosave
+                            {t('analyzer.directFolder')}
                         </h4>
                         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             <input
@@ -324,7 +326,7 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                                 style={{ flexGrow: 1, minWidth: '240px' }}
                             />
                             <button className="button-orange" onClick={handleLocalScan} disabled={isAnalyzing}>
-                                {isAnalyzing ? 'Scanning...' : 'Scan Folder'}
+                                {isAnalyzing ? t('missing.scanning') : t('analyzer.scanFolder')}
                             </button>
                         </div>
                     </div>
@@ -364,14 +366,14 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                         <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                 </div>
-                <h2>Drag & drop mod .zip archive here</h2>
-                <p style={{ margin: '0.4rem 0 1rem 0' }}>or choose source manually</p>
+                <h2>{t('analyzer.dropzone')}</h2>
+                <p style={{ margin: '0.4rem 0 1rem 0' }}>{t('analyzer.or')}</p>
                 <div className="button-group" style={{ justifyContent: 'center' }}>
                     <button className="button" onClick={() => fileInputRef.current?.click()}>
-                        Select .zip file
+                        {t('analyzer.chooseZip')}
                     </button>
                     <button className="button" onClick={() => folderInputRef.current?.click()}>
-                        Select unpacked folder
+                        {t('analyzer.chooseFolder')}
                     </button>
                 </div>
             </div>
@@ -406,43 +408,43 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
                 <div className="results-container">
                     <div className="column panel">
                         <div className="column-header">
-                            <h3>Source Mod .cfg</h3>
+                            <h3>{t('analyzer.sourceCfg')}</h3>
                             <div className="button-group">
-                                <button className="button button-sm" onClick={() => copyToClipboard(generatedCfg)}>Copy</button>
-                                <button className="button-green button-sm" onClick={() => downloadFile(generatedCfg, `${modName}.source.cfg`)}>Download</button>
+                                <button className="button button-sm" onClick={() => copyToClipboard(generatedCfg)}>{t('analyzer.copyCfg')}</button>
+                                <button className="button-green button-sm" onClick={() => downloadFile(generatedCfg, `${modName}.source.cfg`)}>{t('analyzer.downloadCfg')}</button>
                             </div>
                         </div>
                         <textarea className="panel-inset factorio-textarea" value={generatedCfg} readOnly></textarea>
                     </div>
                     <div className="column panel">
                         <div className="column-header">
-                            <h3>Cleaned .cfg (Mod Only)</h3>
+                            <h3>{t('analyzer.cleanedCfg')}</h3>
                             <div className="button-group">
-                                <button className="button button-sm" onClick={() => copyToClipboard(cleanedCfg)}>Copy</button>
-                                <button className="button-green button-sm" onClick={() => downloadFile(cleanedCfg, `${modName}.cfg`)}>Download</button>
+                                <button className="button button-sm" onClick={() => copyToClipboard(cleanedCfg)}>{t('analyzer.copyCfg')}</button>
+                                <button className="button-green button-sm" onClick={() => downloadFile(cleanedCfg, `${modName}.cfg`)}>{t('analyzer.downloadCfg')}</button>
                                 {isConnected && localModPath && (
                                     <button
                                         className="button-orange button-sm"
                                         onClick={handleLocalSave}
                                         disabled={isSaving}
                                     >
-                                        {isSaving ? 'Saving...' : 'Save to Folder'}
+                                        {isSaving ? t('analyzer.saving') : t('analyzer.saveToFolder')}
                                     </button>
                                 )}
                             </div>
                         </div>
                         <textarea className="panel-inset factorio-textarea" value={cleanedCfg} readOnly></textarea>
                         <div className="log-container panel-inset">
-                            <h4>Analysis Log (Removed Vanilla Keys)</h4>
+                            <h4>{t('analyzer.analysisLog')}</h4>
                             <p>{analysisLog}</p>
                         </div>
                         <div className="log-actions">
                             <button className="button button-sm" onClick={() => downloadFile(removedKeysCfg, `${modName}.vanilla_keys.cfg`)}>
-                                Download Removed Vanilla Keys
+                                {t('analyzer.downloadRemovedVanilla')}
                             </button>
                             {unusedKeysCfg && unusedKeysCfg.length > 150 && (
                                 <button className="button-red button-sm" onClick={() => downloadFile(unusedKeysCfg, `${modName}.unused_keys.cfg`)}>
-                                    Download Unused Keys
+                                    {t('analyzer.downloadUnused')}
                                 </button>
                             )}
                         </div>
@@ -454,21 +456,21 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {hardcodedIssues.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Hardcoded & Untranslatable Strings</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>{t('analyzer.hardcodedTitle')}</h3>
                         <span className="badge badge-warning">{hardcodedIssues.length}</span>
                     </div>
                     <p style={{ margin: '0 0 1rem 0', color: '#aaaaaa', fontSize: '0.95rem' }}>
-                        These strings were detected in Lua scripts and may require localization keys.
+                        {t('analyzer.hardcodedDesc')}
                     </p>
                     <div className="table-container panel-inset" style={{ maxHeight: '420px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '22%' }}>File</th>
-                                    <th style={{ width: '8%', textAlign: 'center' }}>Line</th>
-                                    <th style={{ width: '15%', textAlign: 'center' }}>Type</th>
-                                    <th style={{ width: '25%' }}>Code</th>
-                                    <th>Description</th>
+                                    <th style={{ width: '22%' }}>{t('analyzer.colFile')}</th>
+                                    <th style={{ width: '8%', textAlign: 'center' }}>{t('analyzer.colLine')}</th>
+                                    <th style={{ width: '15%', textAlign: 'center' }}>{t('analyzer.colType')}</th>
+                                    <th style={{ width: '25%' }}>{t('analyzer.colCode')}</th>
+                                    <th>{t('analyzer.colDesc')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -497,15 +499,15 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {removedVanillaKeys.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Vanilla Keys Found</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>{t('analyzer.vanillaKeysFound')}</h3>
                         <span className="badge badge-info">{removedVanillaKeys.length}</span>
                     </div>
                     <div className="table-container panel-inset" style={{ maxHeight: '320px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '35%' }}>Section</th>
-                                    <th>Key</th>
+                                    <th style={{ width: '35%' }}>{t('analyzer.colSection')}</th>
+                                    <th>{t('missing.colKey')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -529,15 +531,15 @@ export const ModAnalyzerTab: React.FC<ModAnalyzerTabProps> = ({
             {unusedKeysList.length > 0 && (
                 <div className="panel">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>Unused Keys</h3>
+                        <h3 style={{ margin: 0, color: '#ffe6c0' }}>{t('analyzer.unusedKeysTitle')}</h3>
                         <span className="badge badge-error">{unusedKeysList.length}</span>
                     </div>
                     <div className="table-container panel-inset" style={{ maxHeight: '320px', overflowY: 'auto', padding: '4px' }}>
                         <table className="panel-hole">
                             <thead>
                                 <tr>
-                                    <th style={{ width: '35%' }}>Section</th>
-                                    <th>Key</th>
+                                    <th style={{ width: '35%' }}>{t('analyzer.colSection')}</th>
+                                    <th>{t('missing.colKey')}</th>
                                 </tr>
                             </thead>
                             <tbody>

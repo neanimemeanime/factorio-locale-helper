@@ -30,7 +30,8 @@ import { loadVanillaLocaleData } from './vanilla_loader.js';
 let steamVanillaData = null;
 export function getVanillaData(lang = 'en') {
     if (!steamVanillaData || steamVanillaData.lang !== lang) {
-        const loaded = loadVanillaLocaleData(null, lang);
+        const config = loadConfig();
+        const loaded = loadVanillaLocaleData(config.steamDataDir, lang);
         steamVanillaData = { ...loaded, lang };
         if (loaded.compositeKeys && loaded.compositeKeys.size > 0) {
             console.log(`[vanilla_loader] Loaded ${loaded.compositeKeys.size} live vanilla keys from Factorio data (${loaded.modulesFound.join(', ')})`);
@@ -380,6 +381,7 @@ function startServer(port = 3001) {
                 targetMod: config.targetMod,
                 targetLocaleDir: config.targetLocaleDir,
                 targetLang: config.targetLang,
+                steamDataDir: config.steamDataDir,
                 targetLangs: ['en', 'ru', 'de', 'fr', 'es', 'zh-CN', 'ja', 'pl', 'uk']
             }));
             return;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
+import { I18nProvider, useI18n } from './src/i18n.tsx';
 import { NavigationTabs, TabType } from './src/components/NavigationTabs.tsx';
 import { ServerStatusBar } from './src/components/ServerStatusBar.tsx';
 import { ModAnalyzerTab } from './src/components/ModAnalyzerTab.tsx';
@@ -7,6 +8,7 @@ import { MissingKeysTab } from './src/components/MissingKeysTab.tsx';
 import { QualityAuditTab } from './src/components/QualityAuditTab.tsx';
 
 const App: React.FC = () => {
+    const { t } = useI18n();
     const [activeTab, setActiveTab] = useState<TabType>('analyzer');
     const [isLocalServerConnected, setIsLocalServerConnected] = useState(false);
     const [selectedLang, setSelectedLang] = useState('ru');
@@ -14,6 +16,7 @@ const App: React.FC = () => {
     const [defaultModsDir, setDefaultModsDir] = useState('');
     const [defaultTargetMod, setDefaultTargetMod] = useState('locale-mod');
     const [defaultTargetLocaleDir, setDefaultTargetLocaleDir] = useState('');
+    const [defaultSteamDataDir, setDefaultSteamDataDir] = useState('');
 
     const [prototypesDb, setPrototypesDb] = useState<Set<string>>(new Set());
     const [missingKeysCount, setMissingKeysCount] = useState<number>(0);
@@ -38,6 +41,7 @@ const App: React.FC = () => {
                                 if (defData.modsDir) setDefaultModsDir(defData.modsDir);
                                 if (defData.targetMod) setDefaultTargetMod(defData.targetMod);
                                 if (defData.targetLocaleDir) setDefaultTargetLocaleDir(defData.targetLocaleDir);
+                                if (defData.steamDataDir) setDefaultSteamDataDir(defData.steamDataDir);
                             }
                         }
                     } catch (_) {}
@@ -75,16 +79,15 @@ const App: React.FC = () => {
     return (
         <div className="app-container">
             <header>
-                <h1>Factorio Mod Localization Helper</h1>
-                <p>
-                    Comprehensive tool for prototype analysis, batch missing key scanning, syntax validation, and quality auditing for Factorio 2.1+ (Space Age) mods.
-                </p>
+                <h1>{t('app.title')}</h1>
+                <p>{t('app.subtitle')}</p>
             </header>
 
             <ServerStatusBar
                 isConnected={isLocalServerConnected}
                 defaultModsDir={defaultModsDir}
                 defaultTargetMod={defaultTargetMod}
+                defaultSteamDataDir={defaultSteamDataDir}
                 selectedLang={selectedLang}
                 onChangeLang={setSelectedLang}
             />
@@ -131,4 +134,8 @@ const App: React.FC = () => {
 
 const container = document.getElementById('root');
 const root = ReactDOM.createRoot(container!);
-root.render(<App />);
+root.render(
+    <I18nProvider>
+        <App />
+    </I18nProvider>
+);

@@ -4,18 +4,6 @@ import glob
 import json
 import argparse
 
-# ---------------------------------------------------------------------------
-# Factorio Steam paths & configuration detection
-# ---------------------------------------------------------------------------
-DEFAULT_STEAM_DATA_PATHS = [
-    r"D:\SteamLibrary\steamapps\common\Factorio\data",
-    r"C:\Program Files (x86)\Steam\steamapps\common\Factorio\data",
-    r"C:\Program Files\Steam\steamapps\common\Factorio\data",
-    r"E:\SteamLibrary\steamapps\common\Factorio\data",
-    os.path.expanduser("~/.steam/steam/steamapps/common/Factorio/data"),
-    os.path.expanduser("~/Library/Application Support/Steam/steamapps/common/Factorio/data"),
-]
-
 def load_local_config():
     """Loads config.json from project directory if available."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,17 +18,71 @@ def load_local_config():
 
 CONFIG = load_local_config()
 
+def is_valid_factorio_data(p):
+    if not p or not os.path.isdir(p):
+        return False
+    return os.path.isdir(os.path.join(p, "base")) or os.path.isdir(os.path.join(p, "core"))
+
 def find_steam_factorio_data():
-    env_path = os.environ.get("FACTORIO_DATA") or CONFIG.get("steamDataDir")
-    if env_path and os.path.isdir(env_path):
-        return env_path
-    
-    for path in DEFAULT_STEAM_DATA_PATHS:
-        if os.path.isdir(path):
-            return path
+    env_path = os.environ.get("FACTORIO_DATA") or CONFIG.get("factorioData") or CONFIG.get("steamDataDir")
+    if env_path and is_valid_factorio_data(env_path):
+        return os.path.abspath(env_path)
+
+    candidates = []
+    if sys.platform == "win32":
+        import string
+        potential_steam_roots = [
+            os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Steam"),
+            os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Steam")
+        ]
+        for letter in string.ascii_uppercase:
+            drive_root = f"{letter}:\\"
+            if not os.path.exists(drive_root):
+                continue
+            potential_steam_roots.extend([
+                os.path.join(f"{letter}:\\", "SteamLibrary"),
+                os.path.join(f"{letter}:\\", "Steam")
+            ])
+            candidates.extend([
+                os.path.join(f"{letter}:\\", "SteamLibrary", "steamapps", "common", "Factorio", "data"),
+                os.path.join(f"{letter}:\\", "Steam", "steamapps", "common", "Factorio", "data"),
+                os.path.join(f"{letter}:\\", "Program Files (x86)", "Steam", "steamapps", "common", "Factorio", "data"),
+                os.path.join(f"{letter}:\\", "Program Files", "Steam", "steamapps", "common", "Factorio", "data"),
+                os.path.join(f"{letter}:\\", "Games", "Factorio", "data"),
+                os.path.join(f"{letter}:\\", "Factorio", "data")
+            ])
+        import re
+        for root in potential_steam_roots:
+            vdf = os.path.join(root, "steamapps", "libraryfolders.vdf")
+            if os.path.isfile(vdf):
+                try:
+                    with open(vdf, "r", encoding="utf-8", errors="ignore") as vf:
+                        vdf_txt = vf.read()
+                        for m in re.finditer(r'"path"\s+"([^"]+)"', vdf_txt):
+                            lib = m.group(1).replace(r"\\", "\\")
+                            candidates.append(os.path.join(lib, "steamapps", "common", "Factorio", "data"))
+                except Exception:
+                    pass
+    elif sys.platform == "darwin":
+        candidates.extend([
+            os.path.expanduser("~/Library/Application Support/Steam/steamapps/common/Factorio/data"),
+            "/Applications/Factorio.app/Contents/data"
+        ])
+    else:
+        candidates.extend([
+            os.path.expanduser("~/.steam/steam/steamapps/common/Factorio/data"),
+            os.path.expanduser("~/.local/share/Steam/steamapps/common/Factorio/data"),
+            os.path.expanduser("~/.factorio/data"),
+            "/usr/share/factorio/data"
+        ])
+
+    for cand in candidates:
+        if is_valid_factorio_data(cand):
+            return os.path.abspath(cand)
+
     return None
 
-STEAM_DATA_DIR = find_steam_factorio_data() or r"D:\SteamLibrary\steamapps\common\Factorio\data"
+STEAM_DATA_DIR = find_steam_factorio_data()
 
 # Standard modules in Factorio 2.1+ Space Age
 KNOWN_MODULES = ["core", "base", "space-age", "quality", "elevated-rails", "recycler"]
@@ -96,8 +138,9 @@ def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
     vanilla_keys = {}
     modules_found = []
 
-    if not os.path.exists(data_dir):
-        print(f"WARNING: Factorio data directory not found: {data_dir}")
+    if not data_dir or not os.path.exists(data_dir):
+        print(f"NOTICE: Factorio data directory not detected ({data_dir}).")
+        print("Configure 'factorioData' in config.json or set FACTORIO_DATA to enable live multi-module scanning.")
         return vanilla_keys, modules_found
 
     # Look through known modules and any extra directories containing locale/<lang>

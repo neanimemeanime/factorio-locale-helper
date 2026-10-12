@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useI18n } from '../i18n.tsx';
 
 export interface MissingKeysSummary {
     modsDir: string;
@@ -45,6 +46,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
     selectedLang,
     onUpdateMissingCount
 }) => {
+    const { t } = useI18n();
     const [modsDir, setModsDir] = useState(defaultModsDir);
     const [targetMod, setTargetMod] = useState(defaultTargetMod);
     const [modFilter, setModFilter] = useState('');
@@ -191,11 +193,11 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Parameters Panel */}
             <div className="panel tab-content-panel" style={{ padding: '1.25rem' }}>
-                <h3 style={{ margin: '0 0 1rem 0', color: '#ffe6c0' }}>Missing Keys Scanner Options</h3>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#ffe6c0' }}>{t('missing.optionsTitle')}</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                     <div>
                         <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
-                            Factorio Mods Directory:
+                            {t('missing.modsDirLabel')}:
                         </label>
                         <input
                             type="text"
@@ -207,7 +209,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                     </div>
                     <div>
                         <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
-                            Target Localization Mod:
+                            {t('missing.targetModLabel')}:
                         </label>
                         <input
                             type="text"
@@ -219,14 +221,14 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                     </div>
                     <div>
                         <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.4rem', color: '#ffe6c0' }}>
-                            Filter Specific Mod (optional):
+                            {t('missing.filterModLabel')}:
                         </label>
                         <input
                             type="text"
                             className="factorio-input"
                             value={modFilter}
                             onChange={(e) => setModFilter(e.target.value)}
-                            placeholder="All active mods"
+                            placeholder={t('missing.filterPlaceholder')}
                         />
                     </div>
                 </div>
@@ -240,16 +242,16 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                         />
                         <span className="checkbox"></span>
                         <div style={{ color: '#e0e0e0', fontSize: '0.95rem' }}>
-                            Automatically append missing keys into target mod files
+                            {t('missing.autoMergeLabel')}
                         </div>
                     </label>
 
                     <div className="button-group">
                         <button className="button" onClick={handleResetPaths}>
-                            Reset Paths
+                            {t('missing.resetPaths')}
                         </button>
                         <button className="button-orange" onClick={handleScan} disabled={isLoading || !isConnected}>
-                            {isLoading ? 'Scanning...' : 'Scan Active Mods'}
+                            {isLoading ? t('missing.scanning') : t('missing.scanBtn')}
                         </button>
                     </div>
                 </div>
@@ -276,7 +278,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
 
             {!isConnected && (
                 <div className="panel alert alert-warning" style={{ textAlign: 'center' }}>
-                    Local API server is not running. To scan active mods and inspect files, run in console: <code>npm run server</code>
+                    {t('missing.serverOffline')}
                 </div>
             )}
 
@@ -285,25 +287,25 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                 <div className="panel" style={{ padding: '0.85rem' }}>
                     <div className="kpi-grid">
                         <div className="panel-hole-inner kpi-card">
-                            <div className="kpi-title">Active Mods</div>
+                            <div className="kpi-title">{t('missing.kpiActiveMods')}</div>
                             <div className="kpi-value" style={{ color: '#ffe6c0' }}>
                                 {result.summary.totalActiveMods}
                             </div>
                         </div>
                         <div className="panel-hole-inner kpi-card">
-                            <div className="kpi-title">Mods With Missing Keys</div>
+                            <div className="kpi-title">{t('missing.kpiModsWithMissing')}</div>
                             <div className="kpi-value" style={{ color: result.summary.modsWithMissingKeys > 0 ? '#ffa200' : '#2ecc71' }}>
                                 {result.summary.modsWithMissingKeys}
                             </div>
                         </div>
                         <div className="panel-hole-inner kpi-card">
-                            <div className="kpi-title">Total Missing Keys</div>
+                            <div className="kpi-title">{t('missing.kpiTotalMissing')}</div>
                             <div className="kpi-value" style={{ color: result.summary.totalMissingKeys > 0 ? '#eb5c5f' : '#2ecc71' }}>
                                 {result.summary.totalMissingKeys}
                             </div>
                         </div>
                         <div className="panel-hole-inner kpi-card">
-                            <div className="kpi-title">Files Updated</div>
+                            <div className="kpi-title">{t('missing.kpiFilesUpdated')}</div>
                             <div className="kpi-value" style={{ color: '#7dcaed' }}>
                                 {result.summary.updatedFilesCount}
                             </div>
@@ -318,12 +320,12 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                     {/* Left: Mod list */}
                     <div className="panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                            <h4 style={{ margin: 0, color: '#ffe6c0' }}>Mod List</h4>
+                            <h4 style={{ margin: 0, color: '#ffe6c0' }}>{t('missing.modList')}</h4>
                             <span className="badge badge-warning">{scannedMods.length}</span>
                         </div>
                         <input
                             type="text"
-                            placeholder="Filter by name..."
+                            placeholder={t('missing.filterByName')}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="factorio-input"
@@ -333,7 +335,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                         <div className="panel-inset" style={{ flexGrow: 1, overflowY: 'auto', maxHeight: '520px', padding: '4px' }}>
                             {filteredMods.length === 0 ? (
                                 <div style={{ color: '#888888', padding: '1.5rem', textAlign: 'center' }}>
-                                    No mods found
+                                    {t('missing.noModsFound')}
                                 </div>
                             ) : (
                                 filteredMods.map(([name, modData]) => {
@@ -359,9 +361,9 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                                 </div>
                                                 <div style={{ marginTop: '2px' }}>
                                                     {modData.ruFileExists ? (
-                                                        <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>In Pack</span>
+                                                        <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>{t('missing.inPack')}</span>
                                                     ) : (
-                                                        <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>New File</span>
+                                                        <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>{t('missing.newFile')}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -383,18 +385,18 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                     <div>
                                         <h3 style={{ margin: 0, color: '#ffe6c0', fontSize: '1.3rem' }}>{selectedModName}</h3>
                                         <div style={{ color: '#888888', fontSize: '0.85rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            <span>Archive:</span>
+                                            <span>{t('missing.archiveLabel')}:</span>
                                             <span className="status-chip">{activeModData.matchedFile}</span>
                                             <span>|</span>
-                                            <span>Status: {activeModData.ruFileExists ? 'Exists in localization pack' : 'File not created yet'}</span>
+                                            <span>{t('missing.statusLabel')}: {activeModData.ruFileExists ? t('missing.statusInPack') : t('missing.statusNew')}</span>
                                         </div>
                                     </div>
                                     <div className="button-group">
                                         <button className="button button-sm" onClick={() => copyText(activeModCfgText)}>
-                                            Copy .cfg
+                                            {t('missing.copyCfg')}
                                         </button>
                                         <button className="button-green button-sm" onClick={() => downloadFile(activeModCfgText, `${selectedModName}.cfg`)}>
-                                            Download .cfg
+                                            {t('missing.downloadCfg')}
                                         </button>
                                         {isConnected && (
                                             <button
@@ -402,7 +404,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                                 onClick={() => handleApplyMod(selectedModName)}
                                                 disabled={isApplyingMod}
                                             >
-                                                {isApplyingMod ? 'Writing...' : `Merge into ${targetMod}`}
+                                                {isApplyingMod ? t('missing.merging') : `${t('missing.mergeInto')} ${targetMod}`}
                                             </button>
                                         )}
                                     </div>
@@ -410,20 +412,20 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                                     <div style={{ color: '#ffa200', fontWeight: 'bold', fontSize: '1rem' }}>
-                                        Missing Keys ({activeModData.missingCount})
+                                        {t('missing.missingKeysTitle')} ({activeModData.missingCount})
                                     </div>
                                     <div className="button-group">
                                         <button
                                             className={viewMode === 'structured' ? 'button-orange button-sm' : 'button button-sm'}
                                             onClick={() => setViewMode('structured')}
                                         >
-                                            Table
+                                            {t('missing.tableView')}
                                         </button>
                                         <button
                                             className={viewMode === 'raw' ? 'button-orange button-sm' : 'button button-sm'}
                                             onClick={() => setViewMode('raw')}
                                         >
-                                            Raw .cfg
+                                            {t('missing.rawView')}
                                         </button>
                                     </div>
                                 </div>
@@ -439,9 +441,9 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                                 <table className="panel-hole">
                                                     <thead>
                                                         <tr>
-                                                            <th style={{ width: '30%' }}>Key</th>
-                                                            <th style={{ width: '55%' }}>Original Text (EN)</th>
-                                                            <th style={{ width: '15%', textAlign: 'center' }}>Actions</th>
+                                                            <th style={{ width: '30%' }}>{t('missing.colKey')}</th>
+                                                            <th style={{ width: '55%' }}>{t('missing.colOriginal')}</th>
+                                                            <th style={{ width: '15%', textAlign: 'center' }}>{t('missing.colActions')}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -457,17 +459,17 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                                                                     <div className="button-group" style={{ justifyContent: 'center' }}>
                                                                         <button
                                                                             className="button button-sm"
-                                                                            onClick={() => copyText(key, `Key ${key} copied`)}
+                                                                            onClick={() => copyText(key, t('missing.copiedKey'))}
                                                                             title="Copy key name"
                                                                         >
-                                                                            Key
+                                                                            {t('missing.copyKeyBtn')}
                                                                         </button>
                                                                         <button
                                                                             className="button button-sm"
-                                                                            onClick={() => copyText(`${key}=${val}`, `String ${key} copied`)}
+                                                                            onClick={() => copyText(`${key}=${val}`, t('missing.copiedString'))}
                                                                             title="Copy string (key=value)"
                                                                         >
-                                                                            String
+                                                                            {t('missing.copyStringBtn')}
                                                                         </button>
                                                                     </div>
                                                                 </td>
@@ -489,7 +491,7 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
                             </>
                         ) : (
                             <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#888888' }}>
-                                Select a mod from the list on the left to view missing keys
+                                {t('missing.selectModPrompt')}
                             </div>
                         )}
                     </div>
@@ -499,9 +501,9 @@ export const MissingKeysTab: React.FC<MissingKeysTabProps> = ({
             {/* Empty state when scanned but no missing keys found */}
             {result && scannedMods.length === 0 && (
                 <div className="panel" style={{ textAlign: 'center', padding: '3rem' }}>
-                    <h3 style={{ color: '#2ecc71', margin: '0 0 0.5rem 0' }}>All active mods are fully localized</h3>
+                    <h3 style={{ color: '#2ecc71', margin: '0 0 0.5rem 0' }}>{t('missing.allDoneTitle')}</h3>
                     <p style={{ color: '#aaaaaa', margin: 0 }}>
-                        Checked {result.summary.totalActiveMods} active mod(s). No missing keys detected.
+                        {t('missing.allDoneDesc')}
                     </p>
                 </div>
             )}

@@ -3,12 +3,9 @@ import path from 'path';
 import os from 'os';
 import { parseCfgText } from './missing_keys_scanner.js';
 
-export const DEFAULT_STEAM_DATA_PATHS = [
-    'D:/SteamLibrary/steamapps/common/Factorio/data',
-    'C:/Program Files (x86)/Steam/steamapps/common/Factorio/data',
-    'C:/Program Files/Steam/steamapps/common/Factorio/data',
-    'E:/SteamLibrary/steamapps/common/Factorio/data'
-];
+import { findSteamFactorioData, isValidFactorioDataDir } from './config_loader.js';
+
+export { findSteamFactorioData };
 
 export const OFFICIAL_MODULES = [
     'core',
@@ -18,22 +15,6 @@ export const OFFICIAL_MODULES = [
     'elevated-rails',
     'recycler'
 ];
-
-/**
- * Auto-detects installed Steam Factorio 2.1+ data directory.
- * @returns {string|null}
- */
-export function findSteamFactorioData() {
-    if (process.env.FACTORIO_DATA && fs.existsSync(process.env.FACTORIO_DATA)) {
-        return path.resolve(process.env.FACTORIO_DATA);
-    }
-    for (const p of DEFAULT_STEAM_DATA_PATHS) {
-        if (fs.existsSync(p)) {
-            return path.resolve(p);
-        }
-    }
-    return null;
-}
 
 // In-memory cache for live vanilla keys: cacheKey -> { compositeKeys: Set, flatNames: Set }
 const cache = new Map();

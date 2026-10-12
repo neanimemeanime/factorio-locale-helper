@@ -332,7 +332,7 @@ export function scanMissingKeys(options = {}) {
             }
         }
 
-        // Read existing target translations (e.g. my-texture-pack/locale/ru/<modName>.cfg)
+        // Read existing target translations (e.g. <targetMod>/locale/<lang>/<modName>.cfg)
         const targetCfgPath = path.join(targetPackLocaleDir, `${modName}.cfg`);
         const ruFileExists = fs.existsSync(targetCfgPath);
         const existingRuSections = ruFileExists ? parseCfgText(fs.readFileSync(targetCfgPath, 'utf-8')) : {};

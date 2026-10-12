@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../i18n.tsx';
 
 export type TabType = 'analyzer' | 'missing' | 'audit';
 
@@ -15,6 +16,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     missingKeysCount = 0,
     auditIssuesCount = 0
 }) => {
+    const { t } = useI18n();
+
     return (
         <div className="tabs-dock-container">
             <ul className="tabs tabs-for-panel" role="tablist">
@@ -29,7 +32,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('analyzer');
                         }}
                     >
-                        Mod Analyzer
+                        {t('nav.analyzer')}
                     </a>
                 </li>
                 <li role="presentation">
@@ -43,7 +46,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('missing');
                         }}
                     >
-                        Missing Keys
+                        {t('nav.missing')}
                         {missingKeysCount > 0 && (
                             <span className="badge" style={{ marginLeft: '8px' }}>
                                 {missingKeysCount}
@@ -62,7 +65,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                             onSelectTab('audit');
                         }}
                     >
-                        Quality Audit
+                        {t('nav.audit')}
                         {auditIssuesCount > 0 && (
                             <span className="badge" style={{ marginLeft: '8px' }}>
                                 {auditIssuesCount}
