@@ -206,7 +206,7 @@ console.log('=== Running Factorio Locale Quality Audit Tests ===\n');
 
 // 15. Section syntax validation & normalization
 {
-    console.log('[Test 15] Section syntax validation (misplaced sections, duplicate headers, empty sections)');
+    console.log('[Test 15] Section syntax validation (misplaced sections, duplicate headers, empty sections, duplicate keys)');
     const badCfg = `
 orphan-key=bad
 [corpse-name]
@@ -214,6 +214,7 @@ biter-corpse=Труп кусателя
 []
 [entity-name]
 gun-turret=Турель
+gun-turret=Повторная турель
 line without equals
 [entity-name]
 laser-turret=Лазерная турель
@@ -225,6 +226,7 @@ laser-turret=Лазерная турель
     assert.ok(errorTypes.includes('misplaced_section'), 'Should detect misplaced section [corpse-name]');
     assert.ok(errorTypes.includes('empty_section'), 'Should detect empty section []');
     assert.ok(errorTypes.includes('duplicate_section'), 'Should detect duplicate section [entity-name]');
+    assert.ok(errorTypes.includes('duplicate_key'), 'Should detect duplicate key [gun-turret]');
     assert.ok(errorTypes.includes('line_without_equals'), 'Should detect line without equals');
     console.log('  -> PASS: All syntax errors correctly detected\n');
 }

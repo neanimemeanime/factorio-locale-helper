@@ -302,6 +302,7 @@ export function validateLocaleSyntax(content, options = {}) {
 
     const lines = content.split(/\r?\n/);
     const seenSections = new Map(); // sectionName -> firstLineIndex
+    const sectionKeys = new Map(); // sectionName -> Map(key -> firstLineIndex)
     let currentSection = null;
 
     for (let i = 0; i < lines.length; i++) {
@@ -371,6 +372,24 @@ export function validateLocaleSyntax(content, options = {}) {
                     message: `Orphan key "${key}" defined on line ${lineNum} before any [section] header`,
                     raw: rawLine
                 });
+            } else {
+                if (!sectionKeys.has(currentSection)) {
+                    sectionKeys.set(currentSection, new Map());
+                }
+                const secKeyMap = sectionKeys.get(currentSection);
+                if (secKeyMap.has(key)) {
+                    errors.push({
+                        type: 'duplicate_key',
+                        line: lineNum,
+                        section: currentSection,
+                        key,
+                        firstLine: secKeyMap.get(key),
+                        message: `Duplicate key "${key}" in section [${currentSection}] on line ${lineNum} (first seen on line ${secKeyMap.get(key)}). Causes Factorio fatal crash: Duplicate key in property tree at ROOT.${currentSection}`,
+                        raw: rawLine
+                    });
+                } else {
+                    secKeyMap.set(key, lineNum);
+                }
             }
         } else {
             // Line without '=' that isn't a comment or empty
