@@ -131,9 +131,74 @@ def parse_cfg_file(filepath):
         print(f"Error reading {filepath}: {e}")
     return parsed
 
-def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
+def load_mod_en_keys(target_dir):
     """
-    Scans all vanilla modules in Steam Factorio data directory for locale .cfg files.
+    Loads all keys from <mod>/locale/en/*.cfg into a dict: (sec, key) -> val.
+    """
+    mod_en_keys = {}
+    en_dir = None
+    if os.path.basename(target_dir) in ("ru", "en", "de", "fr", "zh-CN"):
+        cand = os.path.join(os.path.dirname(target_dir), "en")
+        if os.path.isdir(cand):
+            en_dir = cand
+    elif os.path.isdir(os.path.join(target_dir, "locale", "en")):
+        en_dir = os.path.join(target_dir, "locale", "en")
+
+    if en_dir and os.path.isdir(en_dir):
+        for cfg in glob.glob(os.path.join(en_dir, "**", "*.cfg"), recursive=True):
+            parsed = parse_cfg_file(cfg)
+            mod_en_keys.update(parsed)
+    return mod_en_keys
+
+def get_target_mod_info(target_dir):
+    """
+    Finds info.json in target_dir or parent directories and returns parsed dict and mod root.
+    """
+    curr = target_dir
+    for _ in range(4):
+        info_path = os.path.join(curr, "info.json")
+        if os.path.isfile(info_path):
+            try:
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    return json.load(f), curr
+            except Exception:
+                pass
+        parent = os.path.dirname(curr)
+        if parent == curr:
+            break
+        curr = parent
+    return None, target_dir
+
+def get_required_modules_from_info(info_dict):
+    """
+    Extracts required official modules (core, base, space-age, quality, elevated-rails, recycler).
+    Always includes core and base.
+    """
+    required = {"core", "base"}
+    if not info_dict or "dependencies" not in info_dict:
+        return required
+
+    for dep in info_dict.get("dependencies", []):
+        if not isinstance(dep, str):
+            continue
+        dep = dep.strip()
+        if dep.startswith(('?', '!', '~', '(?)')):
+            continue
+        import re
+        mod_name = re.split(r'[\s><=]', dep)[0].strip().lower()
+        if mod_name in KNOWN_MODULES:
+            required.add(mod_name)
+    return required
+
+def norm_val(val):
+    if val is None:
+        return ""
+    return " ".join(val.strip().split())
+
+def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru", allowed_modules=None):
+    """
+    Scans vanilla modules in Steam Factorio data directory for locale .cfg files,
+    optionally scoped to allowed_modules (dependencies).
     """
     vanilla_keys = {}
     modules_found = []
@@ -145,6 +210,9 @@ def load_vanilla_keys(data_dir=STEAM_DATA_DIR, lang="ru"):
 
     # Look through known modules and any extra directories containing locale/<lang>
     for entry in os.listdir(data_dir):
+        if allowed_modules and entry.lower() not in allowed_modules:
+            continue
+
         module_path = os.path.join(data_dir, entry)
         if not os.path.isdir(module_path) or entry.startswith('.'):
             continue
@@ -242,10 +310,15 @@ def resolve_target_dir(raw_path, lang="ru"):
 
     return cleaned
 
-def process_files(target_dir, vanilla_keys, action):
+def process_files(target_dir, vanilla_keys, action, vanilla_en_keys=None, mod_en_keys=None, force_vanilla=False):
     if not os.path.exists(target_dir):
         print(f"Error: Mod directory not found: {target_dir}")
         return 0, 0
+
+    if vanilla_en_keys is None:
+        vanilla_en_keys = {}
+    if mod_en_keys is None:
+        mod_en_keys = {}
 
     mod_cfg_files = glob.glob(os.path.join(target_dir, "**", "*.cfg"), recursive=True)
     if not mod_cfg_files:
@@ -296,18 +369,48 @@ def process_files(target_dir, vanilla_keys, action):
                 key = parts[0].strip()
                 val = parts[1].strip()
 
+            comp_key = (current_section, key)
+
             # Is it a duplicate of vanilla?
-            if (current_section, key) in vanilla_keys:
+            if comp_key in vanilla_keys:
                 if is_protected_key(lines, line_idx):
                     new_lines.append(line)
                     continue
 
+                v_ru_entry = vanilla_keys[comp_key][0]
+                v_ru = v_ru_entry.get("value", "")
+                v_en_list = vanilla_en_keys.get(comp_key, [])
+                v_en = v_en_list[0].get("value", "") if v_en_list else ""
+                m_en = mod_en_keys.get(comp_key, None)
+
+                # 4-State Guard Architecture:
+                # Guard 1 & 2: Overhaul Guard
+                # If mod defined M_EN and norm(M_EN) != norm(V_EN), mod author intentionally modified English!
+                # NEVER deduplicate! Otherwise Factorio falls back to vanilla Russian string.
+                if m_en is not None and v_en and norm_val(m_en) != norm_val(v_en):
+                    if action == "status":
+                        print(f"[OVERHAUL-OVERRIDE] {rel_path} -> [{current_section}] {key} = {val}")
+                        print(f"   -> Mod EN: \"{m_en}\" != Vanilla EN: \"{v_en}\" (NEVER DEDUPLICATE)")
+                    new_lines.append(line)
+                    continue
+
+                # Guard 3: Russian Equivalence Guard
+                # If translator customized Russian text (norm(T_RU) != norm(V_RU)), keep active
+                # unless force_vanilla is requested.
+                if norm_val(val) != norm_val(v_ru) and not force_vanilla:
+                    if action == "status":
+                        print(f"[CUSTOM-TRANSLATION] {rel_path} -> [{current_section}] {key} = {val}")
+                        print(f"   -> Mod RU: \"{val}\" != Vanilla RU: \"{v_ru}\" (KEPT ACTIVE)")
+                    new_lines.append(line)
+                    continue
+
+                # Safe to deduplicate! (norm(T_RU) == norm(V_RU))
                 total_duplicates += 1
 
                 if action == "status":
                     status_str = "COMMENTED" if is_commented else "ACTIVE"
                     print(f"[{status_str}] {rel_path} -> [{current_section}] {key} = {val}")
-                    for v in vanilla_keys[(current_section, key)]:
+                    for v in vanilla_keys[comp_key]:
                         print(f"   -> Vanilla ({v['module']}): {v['value']}")
                     new_lines.append(line)
                 elif action == "comment":
@@ -342,7 +445,7 @@ def process_files(target_dir, vanilla_keys, action):
 
     return total_duplicates, total_modified
 
-def main_menu(current_mod_dir, vanilla_keys, modules_found, lang="ru"):
+def main_menu(current_mod_dir, data_dir, lang="ru"):
     if sys.platform == "win32":
         import io
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -351,12 +454,19 @@ def main_menu(current_mod_dir, vanilla_keys, modules_found, lang="ru"):
     target_dir = current_mod_dir
 
     while True:
+        info_dict, mod_root = get_target_mod_info(target_dir)
+        allowed_modules = get_required_modules_from_info(info_dict) if info_dict else None
+        vanilla_keys, modules_found = load_vanilla_keys(data_dir, lang, allowed_modules=allowed_modules)
+        vanilla_en_keys, _ = load_vanilla_keys(data_dir, "en", allowed_modules=allowed_modules)
+        mod_en_keys = load_mod_en_keys(target_dir)
+
         os.system('cls' if os.name == 'nt' else 'clear')
         print("==================================================================")
         print("     Factorio Locale Duplicates Manager (Factorio 2.1+ Edition)   ")
         print("==================================================================")
-        print(f"  Vanilla Source: {STEAM_DATA_DIR}")
+        print(f"  Vanilla Source: {data_dir}")
         print(f"  Factorio Modules: {', '.join(modules_found) if modules_found else 'NOT FOUND!'}")
+        print(f"  Scoped Dependencies: {', '.join(allowed_modules) if allowed_modules else 'All available'}")
         print(f"  Unique Vanilla Keys ({lang}): {len(vanilla_keys)}")
         print(f"  Target Mod Folder: {target_dir}")
         print("==================================================================")
@@ -374,17 +484,17 @@ def main_menu(current_mod_dir, vanilla_keys, modules_found, lang="ru"):
 
         if choice == "1":
             print("\n--- Duplicate Keys List ---")
-            total_dup, _ = process_files(target_dir, vanilla_keys, "status")
+            total_dup, _ = process_files(target_dir, vanilla_keys, "status", vanilla_en_keys, mod_en_keys)
             print(f"\nTotal duplicates found: {total_dup}")
             input("\nPress Enter to continue...")
         elif choice == "2":
             print("\n--- Commenting Duplicates ---")
-            total_dup, modified = process_files(target_dir, vanilla_keys, "comment")
+            total_dup, modified = process_files(target_dir, vanilla_keys, "comment", vanilla_en_keys, mod_en_keys)
             print(f"\nCompleted. Lines modified: {modified} (out of {total_dup} duplicates)")
             input("\nPress Enter to continue...")
         elif choice == "3":
             print("\n--- Uncommenting Duplicates ---")
-            total_dup, modified = process_files(target_dir, vanilla_keys, "uncomment")
+            total_dup, modified = process_files(target_dir, vanilla_keys, "uncomment", vanilla_en_keys, mod_en_keys)
             print(f"\nCompleted. Lines modified: {modified} (out of {total_dup} duplicates)")
             input("\nPress Enter to continue...")
         elif choice == "4":
@@ -410,25 +520,31 @@ if __name__ == "__main__":
     parser.add_argument("--action", choices=["status", "comment", "uncomment"], default=None, help="Action to execute without menu")
     parser.add_argument("--lang", default=CONFIG.get("targetLang", "ru"), help="Language code (default from config or ru)")
     parser.add_argument("--factorio-data", default=None, help="Path to Factorio data directory")
+    parser.add_argument("--force-vanilla-terms", action="store_true", help="Also comment out custom Russian terms where EN was not modified")
 
     args = parser.parse_args()
 
     data_dir = args.factorio_data or STEAM_DATA_DIR
     target_lang = args.lang
 
-    print(f"Loading vanilla keys from {data_dir}...")
-    vanilla_keys, modules_found = load_vanilla_keys(data_dir, target_lang)
-
     target_path = get_default_mod_locale_dir(target_lang)
     if args.path:
         target_path = resolve_target_dir(args.path, target_lang)
+
+    info_dict, mod_root = get_target_mod_info(target_path)
+    allowed_modules = get_required_modules_from_info(info_dict) if info_dict else None
+
+    print(f"Loading vanilla keys from {data_dir}...")
+    vanilla_keys, modules_found = load_vanilla_keys(data_dir, target_lang, allowed_modules=allowed_modules)
+    vanilla_en_keys, _ = load_vanilla_keys(data_dir, "en", allowed_modules=allowed_modules)
+    mod_en_keys = load_mod_en_keys(target_path)
 
     if args.action:
         if sys.platform == "win32":
             import io
             sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
             sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-        total_dup, modified = process_files(target_path, vanilla_keys, args.action)
+        total_dup, modified = process_files(target_path, vanilla_keys, args.action, vanilla_en_keys, mod_en_keys, force_vanilla=args.force_vanilla_terms)
         print(f"Action '{args.action}' completed. Duplicates found: {total_dup}, modified: {modified}")
     else:
-        main_menu(target_path, vanilla_keys, modules_found, target_lang)
+        main_menu(target_path, data_dir, target_lang)

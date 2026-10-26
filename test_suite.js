@@ -5,6 +5,8 @@ import {
     detectForeignCharacters,
     cleanFactorioText,
     auditLocaleQuality,
+    checkPluralSyntax,
+    VALID_PLURAL_CONDITION,
     WHITELIST_WORDS
 } from './locale_quality_auditor.js';
 import {
@@ -13,10 +15,15 @@ import {
     isStandardVanillaSection,
     isProtectedKey
 } from './analyzer.js';
-import { loadVanillaLocaleData, findSteamFactorioData } from './vanilla_loader.js';
+import {
+    loadVanillaLocaleData,
+    findSteamFactorioData,
+    parseRequiredModulesFromDependencies
+} from './vanilla_loader.js';
 import {
     validateLocaleSyntax,
     fixLocaleSyntax,
+    scoreKeyCandidate,
     normalizeSectionName
 } from './syntax_validator.js';
 import { mergeMissingKeysIntoCfg } from './missing_keys_scanner.js';
@@ -510,4 +517,186 @@ data:extend({
     console.log('  -> PASS: Prototypes with setting_type and localised_name overrides handled accurately without false positives\n');
 }
 
-console.log('=== All 23 Tests Passed Successfully! ===');
+// 24. 4-Signal Scorer & Scored Duplicate Resolution with Tombstones (Argon Recommendations)
+{
+    console.log('[Test 24] 4-Signal Scorer & Scored Duplicate Resolution with Tombstones');
+
+    // Signal 1: Lua call-site negative veto
+    const cfgWithCustomGui = `
+[unit-name]
+action1=Действие 1
+`;
+    // Without veto: flagged because unit-name is a known misplaced prototype section
+    const resNoVeto = validateLocaleSyntax(cfgWithCustomGui);
+    assert.strictEqual(resNoVeto.errors.length, 1);
+    assert.strictEqual(resNoVeto.errors[0].type, 'misplaced_section');
+
+    // With Lua veto: section is referenced in Lua code {"unit-name.action1"} -> 100% valid!
+    const resWithVeto = validateLocaleSyntax(cfgWithCustomGui, {
+        modLuaStrings: new Set(['unit-name.action1'])
+    });
+    assert.strictEqual(resWithVeto.errors.length, 0, 'Signal 1 must veto and suppress misplaced section warnings');
+
+    // Signal 2: Custom GUI sections (e.g. factoryplanner-gui) never match non-canonical leaf prototype regex
+    const cfgGui = `
+[factoryplanner-gui]
+title=Планировщик
+`;
+    const resGui = validateLocaleSyntax(cfgGui);
+    assert.strictEqual(resGui.errors.length, 0, 'Custom GUI sections like factoryplanner-gui must never be flagged as misplaced');
+
+    // Scored Duplicate Resolution & Tombstones
+    const cfgWithDuplicates = `
+[entity-name]
+# Note 1
+kr-crusher=Измельчитель [item=kr-crusher]
+
+[entity-name]
+# MOD OVERRIDE
+kr-crusher=Дробитель
+`;
+    const fixed = fixLocaleSyntax(cfgWithDuplicates);
+    // Header must be coalesced (only one [entity-name])
+    assert.strictEqual((fixed.match(/\[entity-name\]/g) || []).length, 1, 'Header [entity-name] must be coalesced');
+    // Winning candidate is # MOD OVERRIDE (score +1000)
+    assert.ok(fixed.includes('kr-crusher=Дробитель'), 'Winning candidate (# MOD OVERRIDE) must be kept active');
+    // Losing candidate with different value must be preserved as tombstone
+    assert.ok(fixed.includes('# [FLH-DEDUP-ALT line 4] kr-crusher=Измельчитель [item=kr-crusher]'), 'Losing candidate must be preserved as tombstone comment');
+    // Comments must be preserved
+    assert.ok(fixed.includes('# Note 1') && fixed.includes('# MOD OVERRIDE'), 'Comments must be preserved and merged');
+
+    // Identical duplicate (e.g. Rabbasca bug) must be deduplicated silently without duplicate tombstones
+    const cfgIdentical = `
+[item-name]
+rabbasca-relocate-floorthing=Перенос устройств
+rabbasca-relocate-floorthing=Перенос устройств
+`;
+    const fixedIdentical = fixLocaleSyntax(cfgIdentical);
+    assert.strictEqual((fixedIdentical.match(/rabbasca-relocate-floorthing=Перенос устройств/g) || []).length, 1, 'Identical duplicate key must have exactly 1 occurrence');
+    assert.strictEqual(fixedIdentical.includes('# [FLH-DEDUP-ALT'), false, 'Identical duplicate key must not create redundant tombstones');
+    console.log('  -> PASS: 4-Signal Scorer & Scored Duplicate Resolution with Tombstones working flawlessly\n');
+}
+
+// 25. 3-Tier Severity, [.color] support, Slavic plural trap, and Parameter Reordering
+{
+    console.log('[Test 25] 3-Tier Severity, [.color] support, Slavic plural trap, and Parameter Reordering');
+
+    // Factorio accepts [.color] and [.font] as closers identically to [/color] and [/font]
+    const origWithClosers = 'Alert: [color=red]Danger[/color] in [font=default-bold]Core[/font]!';
+    const transWithDotClosers = 'Тревога: [color=red]Опасность[.color] в [font=default-bold]Ядре[.font]!';
+    const cmpDotClosers = compareTokens(origWithClosers, transWithDotClosers);
+    assert.strictEqual(cmpDotClosers.syntaxErrors.length, 0, 'Factorio [.color] and [.font] must be recognized as valid closers');
+    assert.strictEqual(cmpDotClosers.missing.length, 0, 'No missing tags when [.color] is used');
+
+    // Slavic Plural Trap: Factorio evaluates left-to-right; warn if "ends in 1" precedes teen exception
+    const badSlavicPlural = '__plural_for_parameter__1__{1=час|ends in 1=час|ends in 2,3,4=часа|ends in 11,12,13,14=часов|rest=часов}__';
+    const badPluralRes = checkPluralSyntax(badSlavicPlural);
+    assert.ok(badPluralRes.warnings.length > 0, 'Should detect Slavic plural trap');
+    assert.ok(badPluralRes.warnings[0].includes('Slavic plural trap'), 'Warning must describe Slavic plural trap');
+
+    // Correctly ordered Slavic plural: teen exception evaluated first
+    const goodSlavicPlural = '__plural_for_parameter__1__{1=час|ends in 11,12,13,14=часов|ends in 1=час|ends in 2,3,4=часа|rest=часов}__';
+    const goodPluralRes = checkPluralSyntax(goodSlavicPlural);
+    assert.strictEqual(goodPluralRes.warnings.length, 0, 'Correctly ordered Slavic plural must produce 0 warnings');
+    assert.strictEqual(goodPluralRes.errors.length, 0);
+
+    // Parameter reordering (__1__ ... __2__ vs __2__ ... __1__) is valid Russian grammar and MUST PASS
+    const origOrder = 'Phase __1__ of __2__';
+    const reorderedRussian = 'Фаза __2__ из __1__';
+    const cmpReordered = compareTokens(origOrder, reorderedRussian);
+    assert.strictEqual(cmpReordered.missing.length, 0, 'Reordered parameters must not be reported as missing');
+    assert.strictEqual(cmpReordered.extra.length, 0, 'Reordered parameters must not be reported as extra');
+
+    // Hallucinated parameter: RU adds __2__ when EN only had __1__
+    const origSingleParam = 'Energy: __1__ MW';
+    const hallucinatedTrans = 'Энергия: __1__ MW (уровень __2__)';
+    const cmpHallucinated = compareTokens(origSingleParam, hallucinatedTrans);
+    assert.ok(cmpHallucinated.extra.includes('__2__'), 'Hallucinated parameter must be detected in extra tokens');
+
+    console.log('  -> PASS: 3-Tier Severity, [.color] support, Slavic plural ordering, and parameter reordering verified\n');
+}
+
+// 26. Factorio 2.0 Prototype Schema (results, plant_result, place_as_tile, implicit recipe inheritance)
+{
+    console.log('[Test 26] Factorio 2.0 Prototype Schema (results array, plant_result, place_as_tile, recipe inheritance)');
+
+    const mock20Lua = `
+data:extend({
+    {
+        type = "recipe",
+        name = "space-platform-starter-pack",
+        results = {
+            { type = "item", name = "space-platform-starter-pack", amount = 1 }
+        }
+    },
+    {
+        type = "item",
+        name = "yumako-seed",
+        plant_result = "yumako-tree"
+    },
+    {
+        type = "item",
+        name = "crushed-stone-landfill",
+        place_as_tile = {
+            result = "landfill"
+        }
+    }
+})
+`;
+    const res = analyzeModCore({
+        info: { name: 'test-20-schema' },
+        luaFiles: [{ path: 'prototypes.lua', content: mock20Lua }],
+        localeFiles: {
+            en: [
+                '[item-name]\nspace-platform-starter-pack=Space Platform Starter Pack\n' +
+                '[entity-name]\nyumako-tree=Yumako Tree\n' +
+                '[tile-name]\nlandfill=Landfill\n'
+            ]
+        },
+        prototypesDb: new Set(),
+        vanillaNames: new Set(),
+        vanillaCompositeKeys: new Set(),
+        removeUnusedKeys: true
+    });
+
+    // Single product recipe matching existing item-name inherits locale and does NOT need [recipe-name]
+    assert.strictEqual(res.generatedCfg.includes('[recipe-name]'), false, 'Single-product recipe must inherit locale from product without false [recipe-name]');
+    // Item with plant_result and place_as_tile marks those targets used, so they are not treated as unused
+    assert.strictEqual(res.unusedKeysList.some(k => k.key === 'yumako-tree'), false, 'plant_result must mark target entity used');
+    assert.strictEqual(res.unusedKeysList.some(k => k.key === 'landfill'), false, 'place_as_tile must mark target tile used');
+
+    console.log('  -> PASS: Factorio 2.0 results array, plant_result, place_as_tile, and recipe inheritance verified\n');
+}
+
+// 27. Dependency-Scoped Vanilla Baseline (info.json Scoping)
+{
+    console.log('[Test 27] Dependency-Scoped Vanilla Baseline');
+
+    // Check required module parsing from dependencies array
+    const depsWithSpaceAge = ['base >= 2.0', 'space-age', '? quality', '! conflict-mod'];
+    const requiredModules = parseRequiredModulesFromDependencies(depsWithSpaceAge);
+    assert.ok(requiredModules.has('core'), 'Must always include core');
+    assert.ok(requiredModules.has('base'), 'Must always include base');
+    assert.ok(requiredModules.has('space-age'), 'Must include required space-age dependency');
+    assert.strictEqual(requiredModules.has('quality'), false, 'Must NOT include optional (? quality) dependency');
+    assert.strictEqual(requiredModules.has('conflict-mod'), false, 'Must NOT include non-official / incompatible dependency');
+
+    // Scoped loading test: mod depending only on base must NOT load space-age keys
+    const steamDataDir = findSteamFactorioData();
+    if (steamDataDir) {
+        const baseOnlyData = loadVanillaLocaleData(steamDataDir, 'en', {
+            dependencies: ['base >= 2.0']
+        });
+        assert.ok(baseOnlyData.modulesFound.includes('base'), 'Must include base');
+        assert.strictEqual(baseOnlyData.modulesFound.includes('space-age'), false, 'Must NOT include space-age for base-only mod');
+
+        const spaceAgeData = loadVanillaLocaleData(steamDataDir, 'en', {
+            dependencies: ['base >= 2.0', 'space-age']
+        });
+        assert.ok(spaceAgeData.modulesFound.includes('space-age'), 'Must include space-age when explicitly required');
+    }
+
+    console.log('  -> PASS: Vanilla deduplication baseline strictly scoped by info.json dependencies\n');
+}
+
+console.log('=== All 27 Tests Passed Successfully! ===');

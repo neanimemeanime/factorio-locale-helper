@@ -39,7 +39,8 @@ export const CANONICAL_SECTIONS = new Set([
     'shortcut-name',
     'map-gen-preset-name', 'map-gen-preset-description',
     'factoriopedia', 'factoriopedia-description',
-    'cant-build-reason', 'character-corpse', 'entity-status', 'entity-type'
+    'cant-build-reason', 'character-corpse', 'entity-status', 'entity-type',
+    'burner-usage-name'
 ]);
 
 /**
@@ -246,6 +247,23 @@ export const MISPLACED_SECTION_MAP = {
 };
 
 /**
+ * Union of all non-canonical leaf prototype types (entities, items, equipment, planets).
+ */
+export const KNOWN_LEAF_PROTOTYPE_TYPES = new Set([
+    ...KNOWN_ENTITY_TYPES,
+    ...KNOWN_ITEM_TYPES,
+    ...KNOWN_EQUIPMENT_TYPES,
+    'planet',
+    'space-connection'
+]);
+
+/**
+ * Strict taxonomic pattern matching non-canonical prototype sections:
+ * ^(?<protoType>[a-z0-9-]+)-(?<suffix>name|description)$
+ */
+export const NON_CANONICAL_TAXONOMIC_REGEX = /^([a-z0-9-]+)-(name|description)$/;
+
+/**
  * Normalizes a section name to its canonical Factorio section.
  * If the section is misplaced (e.g. 'corpse-name', 'remnant-name'),
  * returns the canonical section ('entity-name').
@@ -281,17 +299,78 @@ export function normalizeSectionName(section) {
 }
 
 /**
+ * Scores a duplicate key candidate according to Argon's Scored Precedence Resolver:
+ * Score = W_directive (+1000) + W_script (+500 Cyrillic) + W_audit (+200 valid tags) + W_length (+50 rich-text) + 0.01 * lineIndex
+ * Empty values score -Infinity.
+ *
+ * @param {{ val?: string, text?: string, comments?: string[], lineNum?: number }} candidate
+ * @param {number} [lineIndex=0]
+ * @returns {number}
+ */
+export function scoreKeyCandidate(candidate, lineIndex = 0) {
+    const val = candidate.val ?? '';
+    if (!val.trim()) {
+        return -Infinity;
+    }
+
+    let score = 0;
+
+    // 1. W_directive (+1000): Preceding or inline comment contains # OVERRIDE, # MANUAL, # FORCE, etc.
+    const commentText = (candidate.comments || []).join('\n').toUpperCase();
+    if (
+        commentText.includes('MOD OVERRIDE') ||
+        commentText.includes('OVERRIDE') ||
+        commentText.includes('MANUAL') ||
+        commentText.includes('FORCE') ||
+        (candidate.text && candidate.text.toUpperCase().includes('MOD OVERRIDE'))
+    ) {
+        score += 1000;
+    }
+
+    // 2. W_script (+500): Contains Cyrillic characters (in RU/target mode)
+    if (/\p{Script=Cyrillic}/u.test(val)) {
+        score += 500;
+    }
+
+    // 3. W_audit (+200): Tag quality score (balanced formatting tags)
+    const openColor = (val.match(/\[color=[^\]]+\]/gi) || []).length;
+    const closeColor = (val.match(/\[(\/|\.)color\]/gi) || []).length;
+    const openFont = (val.match(/\[font=[^\]]+\]/gi) || []).length;
+    const closeFont = (val.match(/\[(\/|\.)font\]/gi) || []).length;
+
+    if (openColor === closeColor && openFont === closeFont) {
+        score += 200;
+    } else {
+        score -= 300;
+    }
+
+    // 4. W_length / Rich-Text (+50): Preserves rich-text icons
+    if (/\[(item|entity|fluid|tile|planet|space-location|quality|recipe|technology|img)=[^\]]+\]/i.test(val)) {
+        score += 50;
+    }
+
+    // 5. Positional tie-breaker: + 0.01 * lineIndex
+    score += (lineIndex * 0.01);
+
+    return score;
+}
+
+/**
  * Validates the syntax of Factorio .cfg content.
  * Checks for:
  * 1. Duplicate section headers within the file (Factorio 2.1 fatal crash).
- * 2. Non-canonical / misplaced sections (e.g. corpse-name, unit-name).
+ * 2. Non-canonical / misplaced sections (e.g. corpse-name, unit-name) using 4-Signal Scorer.
  * 3. Orphan keys before the first section.
  * 4. Empty section headers [].
  * 5. Malformed lines without '=' inside sections.
+ * 6. Duplicate keys inside the same section (Factorio fatal crash).
  *
  * @param {string} content
  * @param {object} [options]
  * @param {string} [options.filePath] - Optional filename for error reporting.
+ * @param {Set<string>|Array<string>} [options.modLuaStrings] - Extracted Lua string literals for Signal 1 veto.
+ * @param {Set<string>} [options.prototypeNames] - Extracted prototype IDs for Signal 3 intersection.
+ * @param {Set<string>} [options.siblingKeys] - Sibling keys in canonical sections.
  * @returns {{ valid: boolean, errors: Array<{ type: string, line: number, section?: string, message: string, suggestion?: string, raw?: string }> }}
  */
 export function validateLocaleSyntax(content, options = {}) {
@@ -342,17 +421,45 @@ export function validateLocaleSyntax(content, options = {}) {
                 seenSections.set(secName, lineNum);
             }
 
-            // Check non-canonical / misplaced sections
+            // Check non-canonical / misplaced sections with 4-Signal Scorer
             const normalized = normalizeSectionName(secName);
             if (normalized !== secName) {
-                errors.push({
-                    type: 'misplaced_section',
-                    line: lineNum,
-                    section: secName,
-                    suggestion: normalized,
-                    message: `Non-canonical / misplaced section [${secName}] on line ${lineNum}. Should be [${normalized}]`,
-                    raw: rawLine
-                });
+                // Signal 1: Lua call-site negative veto
+                let luaVeto = false;
+                if (options.modLuaStrings) {
+                    const luaStrings = options.modLuaStrings;
+                    const query1 = secName + '.';
+                    const query2 = `[${secName}]`;
+                    const hasLuaMatch = (s) => (s && (s.startsWith(query1) || s === secName || s === query2));
+
+                    if (luaStrings instanceof Set) {
+                        for (const str of luaStrings) {
+                            if (hasLuaMatch(str)) { luaVeto = true; break; }
+                        }
+                    } else if (Array.isArray(luaStrings)) {
+                        for (const str of luaStrings) {
+                            if (hasLuaMatch(str)) { luaVeto = true; break; }
+                        }
+                    }
+                }
+
+                if (!luaVeto) {
+                    // Signal 2: Strict Taxonomic Regex
+                    const taxMatch = secName.match(NON_CANONICAL_TAXONOMIC_REGEX);
+                    const isKnownLeaf = taxMatch && KNOWN_LEAF_PROTOTYPE_TYPES.has(taxMatch[1]);
+                    const isExplicitMisplaced = Boolean(MISPLACED_SECTION_MAP[secName]);
+
+                    if (isKnownLeaf || isExplicitMisplaced) {
+                        errors.push({
+                            type: 'misplaced_section',
+                            line: lineNum,
+                            section: secName,
+                            suggestion: normalized,
+                            message: `Non-canonical / misplaced section [${secName}] on line ${lineNum}. Should be [${normalized}]`,
+                            raw: rawLine
+                        });
+                    }
+                }
             }
 
             currentSection = secName;
@@ -413,6 +520,8 @@ export function validateLocaleSyntax(content, options = {}) {
  * Automatically repairs Factorio .cfg content:
  * - Normalizes misplaced sections to canonical ones (e.g. [corpse-name] -> [entity-name]).
  * - Deduplicates section headers: all keys and comments under repeated headers are consolidated.
+ * - Resolves duplicate keys within sections deterministically using Scored Precedence Resolver
+ *   and preserves alternative translations as structured tombstones (# [FLH-DEDUP-ALT line X]).
  * - Drops empty section headers [].
  * - Fixes orphan keys by putting them under a fallback section or commenting them.
  * - Comments out lines without '='.
@@ -428,9 +537,6 @@ export function fixLocaleSyntax(content) {
     const nl = hasCRLF ? '\r\n' : '\n';
     const lines = content.split(/\r?\n/);
 
-    // Structure:
-    // headerComments: string[]
-    // sections: Map<string, { commentsAndKeys: Array<{ type: 'comment'|'pair'|'raw', text: string, key?: string, val?: string }> }>
     const headerLines = [];
     const sectionOrder = [];
     const sectionData = new Map(); // normalizedSectionName -> entries
@@ -461,7 +567,7 @@ export function fixLocaleSyntax(content) {
             if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) {
                 headerLines.push(rawLine);
             } else if (trimmed.includes('=')) {
-                // Orphan key before section: place in 'mod-name' or default section
+                // Orphan key before section: place in 'other' fallback section
                 const fallbackSection = 'other';
                 curSection = fallbackSection;
                 if (!sectionData.has(fallbackSection)) {
@@ -475,6 +581,7 @@ export function fixLocaleSyntax(content) {
                     type: 'pair',
                     key,
                     val,
+                    lineNum: i + 1,
                     text: `${key}=${val}`
                 });
             } else {
@@ -495,6 +602,7 @@ export function fixLocaleSyntax(content) {
                 type: 'pair',
                 key,
                 val,
+                lineNum: i + 1,
                 text: `${key}=${val}`
             });
         } else {
@@ -524,20 +632,9 @@ export function fixLocaleSyntax(content) {
         }
         outLines.push(`[${secName}]`);
 
-        // Deduplicate keys within the section while keeping latest/first translation
-        const seenKeys = new Set();
-        for (const entry of entries) {
-            if (entry.type === 'pair') {
-                if (seenKeys.has(entry.key)) {
-                    // Skip duplicate key in same section
-                    continue;
-                }
-                seenKeys.add(entry.key);
-                outLines.push(entry.text);
-            } else {
-                outLines.push(entry.text);
-            }
-        }
+        // Coalesce entries and resolve duplicate keys with Scored Resolver and Tombstones
+        const sectionOutput = coalesceSectionEntries(entries);
+        outLines.push(...sectionOutput);
     }
 
     let result = outLines.join(nl);
@@ -545,4 +642,120 @@ export function fixLocaleSyntax(content) {
         result += nl;
     }
     return result;
+}
+
+/**
+ * Resolves duplicate keys in a coalesced section using Scored Precedence Resolver
+ * and structured tombstones for alternative translations.
+ *
+ * @param {Array<{ type: string, text: string, key?: string, val?: string, lineNum?: number }>} entries
+ * @returns {string[]}
+ */
+function coalesceSectionEntries(entries) {
+    const keyCandidates = new Map();
+
+    // 1. Attach preceding comments and register candidates
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (entry.type === 'pair') {
+            const comments = [];
+            let j = i - 1;
+            while (j >= 0 && entries[j].type === 'comment') {
+                const commentTrimmed = entries[j].text.trim();
+                if (commentTrimmed.startsWith('#') || commentTrimmed.startsWith(';')) {
+                    comments.unshift({ text: entries[j].text, index: j });
+                    j--;
+                } else {
+                    break;
+                }
+            }
+            entry.precedingComments = comments;
+
+            if (!keyCandidates.has(entry.key)) {
+                keyCandidates.set(entry.key, []);
+            }
+            keyCandidates.get(entry.key).push({ entry, index: i });
+        }
+    }
+
+    // 2. Score duplicates, determine winner, and prepare tombstones
+    const skipIndices = new Set();
+    const replacements = new Map(); // firstIndex -> string[] of output lines
+
+    for (const [key, candidates] of keyCandidates.entries()) {
+        if (candidates.length === 1) continue;
+
+        let bestScore = -Infinity;
+        let winnerCandidate = candidates[0];
+
+        for (const item of candidates) {
+            const score = scoreKeyCandidate({
+                val: item.entry.val,
+                text: item.entry.text,
+                lineNum: item.entry.lineNum,
+                comments: (item.entry.precedingComments || []).map(c => c.text)
+            }, item.entry.lineNum);
+
+            if (score > bestScore) {
+                bestScore = score;
+                winnerCandidate = item;
+            }
+        }
+
+        const firstCandidate = candidates[0];
+        const linesForFirst = [];
+
+        // Collect all unique comments across all candidates
+        const existingComments = new Set();
+        for (const item of candidates) {
+            for (const c of item.entry.precedingComments || []) {
+                const trimmed = c.text.trim();
+                if (!existingComments.has(trimmed)) {
+                    existingComments.add(trimmed);
+                    linesForFirst.push(c.text);
+                }
+                if (item !== firstCandidate) {
+                    skipIndices.add(c.index);
+                }
+            }
+        }
+
+        // Add tombstones for distinct losing values
+        const recordedLosingVals = new Set();
+        for (const item of candidates) {
+            if (item !== firstCandidate) {
+                skipIndices.add(item.index);
+            }
+
+            if (item === winnerCandidate) continue;
+
+            const loseVal = item.entry.val;
+            if (loseVal !== winnerCandidate.entry.val && !recordedLosingVals.has(loseVal)) {
+                recordedLosingVals.add(loseVal);
+                linesForFirst.push(`# [FLH-DEDUP-ALT line ${item.entry.lineNum}] ${item.entry.key}=${loseVal}`);
+            }
+        }
+
+        // Output winning key line
+        linesForFirst.push(`${winnerCandidate.entry.key}=${winnerCandidate.entry.val}`);
+
+        // Mark original preceding comments of first candidate as skipped (already emitted in linesForFirst)
+        for (const c of firstCandidate.entry.precedingComments || []) {
+            skipIndices.add(c.index);
+        }
+
+        replacements.set(firstCandidate.index, linesForFirst);
+    }
+
+    // 3. Build final section lines
+    const finalLines = [];
+    for (let i = 0; i < entries.length; i++) {
+        if (replacements.has(i)) {
+            finalLines.push(...replacements.get(i));
+        } else if (!skipIndices.has(i)) {
+            finalLines.push(entries[i].text);
+        }
+    }
+
+    return finalLines;
 }

@@ -46,9 +46,9 @@ export function cleanFactorioText(val) {
         // Tags: [item=...], [fluid=...], [planet=...], [color=...], etc.
         // Strips tags with slashes ([img=utility/check_mark], [img=item/copper-cable])
         // and parameters ([item=stone,quality=epic])
-        .replace(/\[\/?\s*[a-zA-Z0-9_/-]+(?:\s*=\s*[^\]]*)?\]/gi, ' ')
-        // Hex / color tags [color=1,0,0] and hex codes like #EA1100
-        .replace(/\[color=[^\]]*\]|\[\/color\]|\[font=[^\]]*\]|\[\/font\]/gi, ' ')
+        .replace(/\[[\/\.]?\s*[a-zA-Z0-9_/-]+(?:\s*=\s*[^\]]*)?\]/gi, ' ')
+        // Hex / color tags [color=1,0,0] and hex codes like #EA1100 (supports both [/color] and [.color])
+        .replace(/\[color=[^\]]*\]|\[[\/\.]color\]|\[font=[^\]]*\]|\[[\/\.]font\]/gi, ' ')
         .replace(/#[0-9a-fA-F]{3,8}\b/g, ' ')
         // Pluralization tags: __plural_for_parameter__1__{...}__ or __plural_for_parameter_1_{...}__
         .replace(/__plural_for_parameter[0-9_]*\{([\s\S]*?)\}__/g, (_, p1) => {
@@ -79,6 +79,81 @@ export function cleanFactorioText(val) {
 }
 
 /**
+ * Valid syntax for Factorio plural macro condition LHS:
+ * - Exact integer(s): "1", "0,1", "11,12,13,14"
+ * - Suffix match: "ends in 1", "ends in 2,3,4", "ends in 11,12,13,14"
+ * - Fallback: "rest"
+ */
+export const VALID_PLURAL_CONDITION = /^(rest|(ends\s+in\s+)?\d+(,\d+)*)$/i;
+
+/**
+ * Validates condition keys and Slavic evaluation ordering inside __plural_for_parameter...{...}__ macros.
+ * Factorio evaluates plural clauses left-to-right; if "ends in 1" precedes teen exceptions (11,12,13,14),
+ * numbers like 11 match "ends in 1" causing incorrect grammatical forms.
+ *
+ * @param {string} text
+ * @returns {{ warnings: string[], errors: string[] }}
+ */
+export function checkPluralSyntax(text) {
+    const warnings = [];
+    const errors = [];
+    if (!text) return { warnings, errors };
+
+    const pluralRegex = /__plural_for_parameter[0-9_]*\{([\s\S]*?)\}__/g;
+    let m;
+    while ((m = pluralRegex.exec(text)) !== null) {
+        const inside = m[1];
+        const clauses = inside.split('|').map(s => s.trim()).filter(Boolean);
+        const conditionKeys = [];
+
+        for (const clause of clauses) {
+            const eqIdx = clause.indexOf('=');
+            if (eqIdx === -1) {
+                errors.push(`Malformed plural clause "${clause}" (missing '=')`);
+                continue;
+            }
+            const lhs = clause.slice(0, eqIdx).trim();
+            if (!VALID_PLURAL_CONDITION.test(lhs)) {
+                errors.push(`Invalid plural condition "${lhs}" in macro "${m[0]}"`);
+            }
+            conditionKeys.push(lhs.toLowerCase().replace(/\s+/g, ' '));
+        }
+
+        // Slavic plural trap: Factorio evaluates clauses left-to-right.
+        let idxEndsIn1 = -1;
+        let idxEndsIn234 = -1;
+        let idxTeen = -1;
+
+        for (let i = 0; i < conditionKeys.length; i++) {
+            const cond = conditionKeys[i];
+            if (cond === 'ends in 1') {
+                if (idxEndsIn1 === -1) idxEndsIn1 = i;
+            } else if (cond === 'ends in 2,3,4' || cond === 'ends in 2, 3, 4') {
+                if (idxEndsIn234 === -1) idxEndsIn234 = i;
+            } else if (
+                cond === '11,12,13,14' ||
+                cond === '11, 12, 13, 14' ||
+                cond === 'ends in 11,12,13,14' ||
+                cond === 'ends in 11, 12, 13, 14'
+            ) {
+                if (idxTeen === -1) idxTeen = i;
+            }
+        }
+
+        if (idxTeen !== -1) {
+            if (idxEndsIn1 !== -1 && idxEndsIn1 < idxTeen) {
+                warnings.push(`Slavic plural trap: "ends in 1" appears before teen exception (${conditionKeys[idxTeen]}) in "${m[0]}"`);
+            }
+            if (idxEndsIn234 !== -1 && idxEndsIn234 < idxTeen) {
+                warnings.push(`Slavic plural trap: "ends in 2,3,4" appears before teen exception (${conditionKeys[idxTeen]}) in "${m[0]}"`);
+            }
+        }
+    }
+
+    return { warnings, errors };
+}
+
+/**
  * Extracts Factorio placeholders, paired formatting tags, and standalone tags.
  * @param {string} str
  * @returns {{ placeholders: string[], pairedTags: string[], singleTags: string[], allTokens: string[] }}
@@ -104,9 +179,9 @@ export function extractFactorioTokens(str) {
         }
     }
 
-    // 3. Paired tags: [color=...][/color], [font=...][/font], [tooltip=...][/tooltip]
+    // 3. Paired tags: [color=...][/color], [font=...][/font], [tooltip=...][/tooltip] (supports both [/tag] and [.tag])
     function extractPairsRecursive(text) {
-        const pairRegex = /\[(color|font|tooltip)=([^\]]+)\]([\s\S]*?)\[\/\1\]/gi;
+        const pairRegex = /\[(color|font|tooltip)=([^\]]+)\]([\s\S]*?)\[[\/\.]\1\]/gi;
         let match;
         while ((match = pairRegex.exec(text)) !== null) {
             const tag = match[1].toLowerCase();
@@ -122,7 +197,7 @@ export function extractFactorioTokens(str) {
     const standaloneRegex = /\[([a-zA-Z0-9_/-]+(?:=[^\]]+)?)\]/g;
     while ((m = standaloneRegex.exec(str)) !== null) {
         const fullTag = m[0].toLowerCase();
-        if (/^\[\/?(color|font|tooltip)(=[^\]]+)?\]$/i.test(fullTag)) continue;
+        if (/^\[[\/\.]?(color|font|tooltip)(=[^\]]+)?\]$/i.test(fullTag)) continue;
         singleTags.push(fullTag);
     }
 
@@ -134,7 +209,7 @@ export function extractFactorioTokens(str) {
  * Compares tags and placeholders between the original string and the translated string.
  * @param {string} origStr
  * @param {string} transStr
- * @returns {{ origTokens: string[], transTokens: string[], missing: string[], extra: string[], syntaxErrors: string[] }}
+ * @returns {{ origTokens: string[], transTokens: string[], missing: string[], extra: string[], syntaxErrors: string[], warnings: string[] }}
  */
 export function compareTokens(origStr, transStr) {
     const origTokens = extractFactorioTokens(origStr);
@@ -178,18 +253,17 @@ export function compareTokens(origStr, transStr) {
     }
 
     // Relax color tag matching: if paired color tags are preserved in translation,
-    // match them up so semantic color differences (e.g. yellow vs orange, named vs rgb)
-    // don't trigger false positive missing/extra tags.
+    // match them up so semantic color differences don't trigger false positive missing/extra tags.
     const missingColorIndices = [];
     for (let i = 0; i < missing.length; i++) {
-        if (/^\[color=[^\]]+\]\[\/color\]$/i.test(missing[i])) {
+        if (/^\[color=[^\]]+\]\[[\/\.]color\]$/i.test(missing[i])) {
             missingColorIndices.push(i);
         }
     }
 
     const extraColorIndices = [];
     for (let i = 0; i < extra.length; i++) {
-        if (/^\[color=[^\]]+\]\[\/color\]$/i.test(extra[i])) {
+        if (/^\[color=[^\]]+\]\[[\/\.]color\]$/i.test(extra[i])) {
             extraColorIndices.push(i);
         }
     }
@@ -208,10 +282,10 @@ export function compareTokens(origStr, transStr) {
         extra.push(...newExtra);
     }
 
-    // Check syntax errors in translated string (e.g. unclosed color or font tags)
+    // Check syntax errors in translated string (e.g. unclosed color or font tags, supports both [/color] and [.color])
     const syntaxErrors = [];
     const openColorMatches = (transStr || '').match(/\[color=[^\]]+\]/gi) || [];
-    const closeColorMatches = (transStr || '').match(/\[\/color\]/gi) || [];
+    const closeColorMatches = (transStr || '').match(/\[[\/\.]color\]/gi) || [];
     if (openColorMatches.length > closeColorMatches.length) {
         syntaxErrors.push(`Unclosed [color=...] tag (opened: ${openColorMatches.length}, closed: ${closeColorMatches.length})`);
     } else if (closeColorMatches.length > openColorMatches.length) {
@@ -219,11 +293,25 @@ export function compareTokens(origStr, transStr) {
     }
 
     const openFontMatches = (transStr || '').match(/\[font=[^\]]+\]/gi) || [];
-    const closeFontMatches = (transStr || '').match(/\[\/font\]/gi) || [];
+    const closeFontMatches = (transStr || '').match(/\[[\/\.]font\]/gi) || [];
     if (openFontMatches.length > closeFontMatches.length) {
         syntaxErrors.push(`Unclosed [font=...] tag (opened: ${openFontMatches.length}, closed: ${closeFontMatches.length})`);
     } else if (closeFontMatches.length > openFontMatches.length) {
         syntaxErrors.push(`Extra closing [/font] tag (opened: ${openFontMatches.length}, closed: ${closeFontMatches.length})`);
+    }
+
+    // Check plural syntax & condition keys
+    const pluralCheck = checkPluralSyntax(transStr);
+    if (pluralCheck.errors.length > 0) {
+        syntaxErrors.push(...pluralCheck.errors);
+    }
+
+    // Mutated macro identifier check (e.g. __CONTROL__построить__)
+    const macroMatches = (transStr || '').match(/__(CONTROL|ENTITY|ITEM|FLUID|TILE|TECHNOLOGY|RECIPE|PLANET)__([^_]+)__/g) || [];
+    for (const macro of macroMatches) {
+        if (/\p{Script=Cyrillic}/u.test(macro)) {
+            syntaxErrors.push(`Mutated macro identifier "${macro}" contains Cyrillic characters (must remain in English internal ID)`);
+        }
     }
 
     return {
@@ -231,7 +319,8 @@ export function compareTokens(origStr, transStr) {
         transTokens: transTokens.allTokens,
         missing,
         extra,
-        syntaxErrors
+        syntaxErrors,
+        warnings: pluralCheck.warnings
     };
 }
 
@@ -456,17 +545,48 @@ export function auditLocaleQuality(options = {}) {
                 const enVal = enSections[section]?.[key];
                 if (enVal) {
                     const tokenCmp = compareTokens(enVal, val);
-                    if (tokenCmp.missing.length > 0 || tokenCmp.syntaxErrors.length > 0) {
+                    const hallucinatedParams = tokenCmp.extra.filter(t => /^__\d+__$/.test(t));
+                    const hasIssues = tokenCmp.missing.length > 0 ||
+                                      tokenCmp.syntaxErrors.length > 0 ||
+                                      hallucinatedParams.length > 0 ||
+                                      (tokenCmp.warnings && tokenCmp.warnings.length > 0);
+
+                    if (hasIssues) {
                         tagMismatchCount++;
                         if (rawIssueType === 'all' || rawIssueType === 'tags' || rawIssueType === 'tag_mismatch') {
                             const descParts = [];
                             if (tokenCmp.missing.length > 0) {
                                 descParts.push(`Missing in translation: ${tokenCmp.missing.join(', ')}`);
                             }
+                            if (hallucinatedParams.length > 0) {
+                                descParts.push(`Hallucinated parameter not in English source: ${hallucinatedParams.join(', ')}`);
+                            }
                             if (tokenCmp.syntaxErrors.length > 0) {
                                 descParts.push(`Syntax: ${tokenCmp.syntaxErrors.join('; ')}`);
                             }
+                            if (tokenCmp.warnings && tokenCmp.warnings.length > 0) {
+                                descParts.push(`Warning: ${tokenCmp.warnings.join('; ')}`);
+                            }
+
+                            // 3-tier severity classification: CRITICAL, WARNING, INFO
+                            let severity = 'CRITICAL';
+                            if (tokenCmp.syntaxErrors.length > 0 || hallucinatedParams.length > 0) {
+                                severity = 'CRITICAL';
+                            } else if (tokenCmp.missing.some(t => /^__\d+__$/.test(t))) {
+                                const missingNumParams = tokenCmp.missing.filter(t => /^__\d+__$/.test(t));
+                                const allInPlural = missingNumParams.every(p => {
+                                    const num = p.replace(/_/g, '');
+                                    return new RegExp(`__plural_for_parameter_?_?${num}_?_?\\{`).test(val);
+                                });
+                                severity = allInPlural ? 'WARNING' : 'CRITICAL';
+                            } else if (tokenCmp.warnings && tokenCmp.warnings.length > 0) {
+                                severity = 'WARNING';
+                            } else {
+                                severity = 'WARNING';
+                            }
+
                             issues.push({
+                                severity,
                                 type: 'tag_mismatch',
                                 file: filename,
                                 modName,
@@ -477,17 +597,27 @@ export function auditLocaleQuality(options = {}) {
                                 missingTags: tokenCmp.missing,
                                 extraTags: tokenCmp.extra,
                                 syntaxErrors: tokenCmp.syntaxErrors,
+                                warnings: tokenCmp.warnings || [],
                                 description: descParts.join(' | ')
                             });
                         }
                     }
                 } else {
-                    // Even without original EN, check internal tag syntax errors
+                    // Even without original EN, check internal tag syntax errors & plural warnings
                     const tokenCmp = compareTokens('', val);
-                    if (tokenCmp.syntaxErrors.length > 0) {
+                    const hasIssues = tokenCmp.syntaxErrors.length > 0 || (tokenCmp.warnings && tokenCmp.warnings.length > 0);
+                    if (hasIssues) {
                         tagMismatchCount++;
                         if (rawIssueType === 'all' || rawIssueType === 'tags' || rawIssueType === 'tag_mismatch') {
+                            const descParts = [];
+                            if (tokenCmp.syntaxErrors.length > 0) {
+                                descParts.push(`Tag syntax error: ${tokenCmp.syntaxErrors.join('; ')}`);
+                            }
+                            if (tokenCmp.warnings && tokenCmp.warnings.length > 0) {
+                                descParts.push(`Warning: ${tokenCmp.warnings.join('; ')}`);
+                            }
                             issues.push({
+                                severity: tokenCmp.syntaxErrors.length > 0 ? 'CRITICAL' : 'WARNING',
                                 type: 'tag_mismatch',
                                 file: filename,
                                 modName,
@@ -498,7 +628,8 @@ export function auditLocaleQuality(options = {}) {
                                 missingTags: [],
                                 extraTags: [],
                                 syntaxErrors: tokenCmp.syntaxErrors,
-                                description: `Tag syntax error: ${tokenCmp.syntaxErrors.join('; ')}`
+                                warnings: tokenCmp.warnings || [],
+                                description: descParts.join(' | ')
                             });
                         }
                     }
@@ -514,6 +645,7 @@ export function auditLocaleQuality(options = {}) {
                             const nonLatinLangs = foreign.languages.filter(l => l !== 'en');
                             const foreignChars = [...foreign.cjkWords, ...foreign.otherChars];
                             issues.push({
+                                severity: 'CRITICAL',
                                 type: 'foreign_characters',
                                 file: filename,
                                 modName,
@@ -535,6 +667,7 @@ export function auditLocaleQuality(options = {}) {
                                 untranslatedCount++;
                                 if (rawIssueType === 'all' || rawIssueType === 'untranslated' || rawIssueType === 'untranslated_english' || rawIssueType === 'foreign') {
                                     issues.push({
+                                        severity: 'WARNING',
                                         type: 'untranslated_english',
                                         file: filename,
                                         modName,
@@ -552,6 +685,7 @@ export function auditLocaleQuality(options = {}) {
                             mixedCount++;
                             if (rawIssueType === 'all' || rawIssueType === 'mixed' || rawIssueType === 'mixed_language' || rawIssueType === 'foreign') {
                                 issues.push({
+                                    severity: 'WARNING',
                                     type: 'mixed_language',
                                     file: filename,
                                     modName,

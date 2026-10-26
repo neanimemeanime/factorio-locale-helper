@@ -84,7 +84,8 @@ export const PROTOTYPE_SECTIONS = {
     shortcut: { name: 'shortcut-name' },
     'map-gen-presets': { name: 'map-gen-preset-name', desc: 'map-gen-preset-description' },
     achievement: { name: 'achievement-name', desc: 'achievement-description' },
-    'airborne-pollutant': { name: 'airborne-pollutant-name', desc: 'airborne-pollutant-description' }
+    'airborne-pollutant': { name: 'airborne-pollutant-name', desc: 'airborne-pollutant-description' },
+    'burner-usage': { name: 'burner-usage-name' }
 };
 
 for (const t of ENTITY_TYPES) {
@@ -302,6 +303,19 @@ export function parseSinglePrototype(tableStr) {
     const placedAsEquipmentResultMatch = tableStr.match(simpleFieldRegex('placed_as_equipment_result'));
     if (placedAsEquipmentResultMatch) prototype.placed_as_equipment_result = placedAsEquipmentResultMatch[1];
 
+    // Factorio 2.0+ Space Age plant_result (seeds, agriculture)
+    const plantResultMatch = tableStr.match(simpleFieldRegex('plant_result'));
+    if (plantResultMatch) prototype.plant_result = plantResultMatch[1];
+
+    // Factorio 2.0+ place_as_tile = { result = "..." } or place_as_tile = "..."
+    const placeAsTileComplex = tableStr.match(/\bplace_as_tile\s*=\s*\{[^\}]*\bresult\s*=\s*["']([^"']+)["']/);
+    const placeAsTileSimple = tableStr.match(simpleFieldRegex('place_as_tile'));
+    if (placeAsTileComplex) {
+        prototype.place_as_tile_result = placeAsTileComplex[1];
+    } else if (placeAsTileSimple) {
+        prototype.place_as_tile_result = placeAsTileSimple[1];
+    }
+
     const mainProductMatch = tableStr.match(simpleFieldRegex('main_product'));
     if (mainProductMatch) prototype.main_product = mainProductMatch[1];
 
@@ -312,6 +326,24 @@ export function parseSinglePrototype(tableStr) {
     if (categoryMatch) prototype.category = categoryMatch[1];
 
     const arrayFieldRegex = (fieldName) => new RegExp(`\\b${fieldName}\\s*=\\s*\\{([\\s\\S]*?)\\}`, 'm');
+
+    // Factorio 2.0+ results array: results = { {type = "item", name = "...", amount = 1}, ... } or { {"...", 1} }
+    const resultsMatch = tableStr.match(arrayFieldRegex('results'));
+    if (resultsMatch) {
+        const resContent = resultsMatch[1];
+        const resNames = [];
+        const nameMatches = resContent.matchAll(/\bname\s*=\s*["']([^"']+)["']/g);
+        for (const nm of nameMatches) {
+            resNames.push(nm[1]);
+        }
+        const positionalMatches = resContent.matchAll(/\{\s*["']([^"']+)["']\s*,\s*\d+/g);
+        for (const pm of positionalMatches) {
+            if (!resNames.includes(pm[1])) {
+                resNames.push(pm[1]);
+            }
+        }
+        prototype.results = resNames;
+    }
 
     const productsMatch = tableStr.match(arrayFieldRegex('products'));
     if (productsMatch) {
@@ -608,26 +640,29 @@ export function analyzeModCore({
         if (p.type === 'item') {
             if (p.place_result) markUsed('entity-name', p.place_result);
             if (p.placed_as_equipment_result) markUsed('equipment-name', p.placed_as_equipment_result);
+            if (p.place_as_tile_result) markUsed('tile-name', p.place_as_tile_result);
+            if (p.plant_result) markUsed('entity-name', p.plant_result);
 
             if (p.place_result && (existingLocale['entity-name']?.[p.place_result] || isVanilla('entity-name', p.place_result))) found = true;
             if (!found && p.placed_as_equipment_result && (existingLocale['equipment-name']?.[p.placed_as_equipment_result] || isVanilla('equipment-name', p.placed_as_equipment_result))) found = true;
+            if (!found && p.place_as_tile_result && (existingLocale['tile-name']?.[p.place_as_tile_result] || isVanilla('tile-name', p.place_as_tile_result))) found = true;
+            if (!found && p.plant_result && (existingLocale['entity-name']?.[p.plant_result] || isVanilla('entity-name', p.plant_result))) found = true;
             if (!found) {
                 if (!p.has_localised_name) addMissing('item-name', p.name);
                 if (!p.has_localised_description) addMissing('item-description', p.name);
             }
         } else if (p.type === 'recipe') {
-            if (p.main_product) {
-                markUsed('item-name', p.main_product);
-                markUsed('fluid-name', p.main_product);
+            const allProducts = [];
+            if (p.main_product) allProducts.push(p.main_product);
+            if (p.result) allProducts.push(p.result);
+            if (p.results && p.results.length > 0) allProducts.push(...p.results);
+            if (p.products && p.products.length > 0) allProducts.push(...p.products);
+
+            for (const prod of allProducts) {
+                markUsed('item-name', prod);
+                markUsed('fluid-name', prod);
             }
-            if (p.result) {
-                markUsed('item-name', p.result);
-                markUsed('fluid-name', p.result);
-            }
-            if (p.products && p.products.length > 0) {
-                markUsed('item-name', p.products[0]);
-                markUsed('fluid-name', p.products[0]);
-            }
+
             const checkItemOrFluidOrEntity = (prodName) => prodName && (
                 existingLocale['item-name']?.[prodName] ||
                 existingLocale['fluid-name']?.[prodName] ||
@@ -636,10 +671,21 @@ export function analyzeModCore({
                 isVanilla('fluid-name', prodName) ||
                 isVanilla('entity-name', prodName)
             );
-            if (checkItemOrFluidOrEntity(p.main_product)) found = true;
-            if (!found && checkItemOrFluidOrEntity(p.result)) found = true;
-            if (!found && p.products && p.products.length > 0 && checkItemOrFluidOrEntity(p.products[0])) found = true;
-            if (!found && checkItemOrFluidOrEntity(p.name)) found = true;
+
+            // Factorio 2.0/2.1 implicit recipe name inheritance:
+            // Single-product recipes or recipes with explicit main_product inherit the product's localised name
+            if (p.main_product && checkItemOrFluidOrEntity(p.main_product)) {
+                found = true;
+            } else if (p.result && checkItemOrFluidOrEntity(p.result)) {
+                found = true;
+            } else if (p.results && p.results.length === 1 && checkItemOrFluidOrEntity(p.results[0])) {
+                found = true;
+            } else if (p.products && p.products.length === 1 && checkItemOrFluidOrEntity(p.products[0])) {
+                found = true;
+            } else if (checkItemOrFluidOrEntity(p.name)) {
+                found = true;
+            }
+
             if (!found) {
                 if (!p.has_localised_name) addMissing('recipe-name', p.name);
                 if (!p.has_localised_description) addMissing('recipe-description', p.name);
