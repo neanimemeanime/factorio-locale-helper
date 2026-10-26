@@ -79,12 +79,28 @@ export function cleanFactorioText(val) {
 }
 
 /**
- * Valid syntax for Factorio plural macro condition LHS:
+ * Valid syntax for simple Factorio plural macro condition LHS:
  * - Exact integer(s): "1", "0,1", "11,12,13,14"
  * - Suffix match: "ends in 1", "ends in 2,3,4", "ends in 11,12,13,14"
  * - Fallback: "rest"
  */
 export const VALID_PLURAL_CONDITION = /^(rest|(ends\s+in\s+)?\d+(,\d+)*)$/i;
+
+/**
+ * Validates a single condition sub-clause (e.g. "1", "ends in 1", "rest").
+ */
+export function isPluralConditionPartValid(part) {
+    return /^(rest|(ends\s+in\s+)?\d+)$/i.test(part.trim());
+}
+
+/**
+ * Validates condition keys (e.g. "1", "ends in 1", "ends in 2,3,4", "ends in 2, ends in 3, ends in 4").
+ */
+export function isPluralConditionValid(clauseLhs) {
+    const parts = clauseLhs.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) return false;
+    return parts.every(isPluralConditionPartValid);
+}
 
 /**
  * Validates condition keys and Slavic evaluation ordering inside __plural_for_parameter...{...}__ macros.
@@ -113,7 +129,7 @@ export function checkPluralSyntax(text) {
                 continue;
             }
             const lhs = clause.slice(0, eqIdx).trim();
-            if (!VALID_PLURAL_CONDITION.test(lhs)) {
+            if (!isPluralConditionValid(lhs)) {
                 errors.push(`Invalid plural condition "${lhs}" in macro "${m[0]}"`);
             }
             conditionKeys.push(lhs.toLowerCase().replace(/\s+/g, ' '));
@@ -128,13 +144,13 @@ export function checkPluralSyntax(text) {
             const cond = conditionKeys[i];
             if (cond === 'ends in 1') {
                 if (idxEndsIn1 === -1) idxEndsIn1 = i;
-            } else if (cond === 'ends in 2,3,4' || cond === 'ends in 2, 3, 4') {
+            } else if (cond.startsWith('ends in 2') || cond.includes('ends in 3') || cond.includes('ends in 4')) {
                 if (idxEndsIn234 === -1) idxEndsIn234 = i;
             } else if (
-                cond === '11,12,13,14' ||
-                cond === '11, 12, 13, 14' ||
-                cond === 'ends in 11,12,13,14' ||
-                cond === 'ends in 11, 12, 13, 14'
+                cond.includes('11') ||
+                cond.includes('12') ||
+                cond.includes('13') ||
+                cond.includes('14')
             ) {
                 if (idxTeen === -1) idxTeen = i;
             }
@@ -164,11 +180,14 @@ export function extractFactorioTokens(str) {
     const pairedTags = [];
     const singleTags = [];
 
-    // 1. Pluralization blocks: __plural_for_parameter__1__{...}__
-    const pluralRegex = /__plural_for_parameter[0-9_]*\{[\s\S]*?\}__/g;
+    // 1. Pluralization blocks: extract parameter signature (e.g. __plural_for_parameter__1__)
+    // instead of whole localized string inside {...} so translation doesn't false-mismatch
+    const pluralRegex = /__plural_for_parameter[0-9_]*\{([\s\S]*?)\}__/g;
     let m;
     while ((m = pluralRegex.exec(str)) !== null) {
-        placeholders.push(m[0]);
+        const paramMatch = m[0].match(/__plural_for_parameter_?_?(\d+)/i);
+        const sig = paramMatch ? `__plural_for_parameter__${paramMatch[1]}__` : m[0];
+        placeholders.push(sig);
     }
 
     // 2. Placeholders: __1__, __2__, __ENTITY__...__, __CONTROL__...__
@@ -280,6 +299,21 @@ export function compareTokens(origStr, transStr) {
         missing.push(...newMissing);
         extra.length = 0;
         extra.push(...newExtra);
+    }
+
+    // Upgraded plural handling: if translation uses __plural_for_parameter__N__
+    // and original has __N__, parameter N is accounted for in translation without dropping it
+    for (let i = extra.length - 1; i >= 0; i--) {
+        const extraToken = extra[i];
+        const match = extraToken.match(/^__plural_for_parameter__(\d+)__$/i);
+        if (match) {
+            const paramKey = `__${match[1]}__`;
+            const missingIdx = missing.findIndex(m => m.toLowerCase() === paramKey.toLowerCase());
+            if (missingIdx !== -1) {
+                missing.splice(missingIdx, 1);
+                extra.splice(i, 1);
+            }
+        }
     }
 
     // Check syntax errors in translated string (e.g. unclosed color or font tags, supports both [/color] and [.color])
